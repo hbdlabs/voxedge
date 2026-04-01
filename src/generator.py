@@ -62,6 +62,7 @@ class Generator:
             max_tokens=max_tokens,
             temperature=0.3,
             top_p=0.9,
-            stop=["\nQuestion:", "\n\n\n"],
+            repeat_penalty=1.3,
+            stop=["\nQuestion:", "\n\n\n", "\nNote:", "(Note:"],
         )
         return result["choices"][0]["text"].strip()

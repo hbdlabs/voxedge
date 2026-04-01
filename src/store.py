@@ -18,17 +18,20 @@ class VectorStore:
     def __init__(self, path: str, vector_size: int = 384):
         self._path = Path(path)
         self._vector_size = vector_size
-        if self._path.exists():
-            self._shard = EdgeShard.load(str(self._path))
-        else:
-            self._path.mkdir(parents=True, exist_ok=True)
-            config = EdgeConfig(
-                vectors=EdgeVectorParams(
-                    size=vector_size,
-                    distance=Distance.Cosine,
-                ),
-            )
-            self._shard = EdgeShard.create(str(self._path), config)
+        if self._path.exists() and any(self._path.iterdir()):
+            try:
+                self._shard = EdgeShard.load(str(self._path))
+                return
+            except Exception:
+                pass
+        self._path.mkdir(parents=True, exist_ok=True)
+        config = EdgeConfig(
+            vectors=EdgeVectorParams(
+                size=vector_size,
+                distance=Distance.Cosine,
+            ),
+        )
+        self._shard = EdgeShard.create(str(self._path), config)
 
     def upsert(self, point_id: int, vector: list[float], payload: dict) -> None:
         self._shard.update(
