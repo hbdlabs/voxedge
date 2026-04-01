@@ -15,7 +15,7 @@ RUN bun install -g @llamaindex/liteparse
 # Install Python dependencies
 WORKDIR /app
 COPY pyproject.toml .
-RUN pip install --no-cache-dir -e "."
+RUN pip install --no-cache-dir "."
 
 # Download GGUF model at build time
 # NOTE: Update this URL to the actual quantized GGUF location

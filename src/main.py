@@ -1,3 +1,4 @@
+import tempfile
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -8,7 +9,7 @@ from pydantic import BaseModel
 from src.config import settings
 from src.embedder import Embedder
 from src.generator import Generator
-from src.ingest import ingest_file, ingest_directory
+from src.ingest import ingest_file
 from src.query import query_brain
 from src.store import VectorStore
 
@@ -45,16 +46,18 @@ def create_app(
                 n_threads=settings.n_threads,
             )
 
-        # Ingest baked-in corpus
+        # Ingest baked-in corpus (only new files)
         corpus_dir = Path(settings.corpus_dir)
-        if corpus_dir.exists() and any(corpus_dir.iterdir()):
-            ingest_directory(
-                corpus_dir,
-                app.state.embedder,
-                app.state.store,
-                chunk_size=settings.chunk_size,
-                chunk_overlap=settings.chunk_overlap,
-            )
+        if corpus_dir.exists():
+            existing_docs = {d["source_file"] for d in app.state.store.list_documents()}
+            supported = {".txt", ".md", ".pdf", ".docx", ".doc", ".pptx", ".xlsx"}
+            for f in sorted(corpus_dir.iterdir()):
+                if f.is_file() and f.suffix.lower() in supported and f.name not in existing_docs:
+                    ingest_file(
+                        f, app.state.embedder, app.state.store,
+                        chunk_size=settings.chunk_size,
+                        chunk_overlap=settings.chunk_overlap,
+                    )
 
         yield
 
@@ -104,9 +107,10 @@ def create_app(
     async def ingest(files: list[UploadFile]):
         results = []
         for upload in files:
-            tmp_path = Path(f"/tmp/{upload.filename}")
-            content = await upload.read()
-            tmp_path.write_bytes(content)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=Path(upload.filename or "upload").suffix) as tmp:
+                content = await upload.read()
+                tmp.write(content)
+                tmp_path = Path(tmp.name)
             result = ingest_file(
                 path=tmp_path,
                 embedder=app.state.embedder,
@@ -116,7 +120,7 @@ def create_app(
             )
             tmp_path.unlink()
             results.append({
-                "file": result.file,
+                "file": upload.filename or tmp_path.name,
                 "chunks": result.chunks,
                 "language": result.language,
             })

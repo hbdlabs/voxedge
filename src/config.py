@@ -1,4 +1,13 @@
+from langdetect import detect
 from pydantic_settings import BaseSettings
+
+
+def detect_language(text: str) -> str:
+    """Detect language of text, returning 'unknown' on failure."""
+    try:
+        return detect(text)
+    except Exception:
+        return "unknown"
 
 
 class Settings(BaseSettings):
