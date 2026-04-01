@@ -12,19 +12,18 @@ ENV PATH="/root/.bun/bin:$PATH"
 # Install LiteParse CLI
 RUN bun install -g @llamaindex/liteparse
 
-# Install Python dependencies
+# Copy source first (needed for pip install)
 WORKDIR /app
 COPY pyproject.toml .
-RUN pip install --no-cache-dir "."
-
-# Download GGUF model at build time
-# NOTE: Update this URL to the actual quantized GGUF location
-RUN mkdir -p /data/models && \
-    curl -L -o /data/models/tiny-aya-q4.gguf \
-    "https://huggingface.co/CohereLabs/tiny-aya-base-gguf/resolve/main/tiny-aya-base-Q4_K_M.gguf"
-
-# Copy application source
 COPY src/ src/
+
+# Install Python dependencies
+RUN pip install --upgrade pip && pip install --no-cache-dir "."
+
+# Download GGUF model at build time (~2.1 GB)
+RUN mkdir -p /data/models && \
+    curl -L -o /data/models/tiny-aya-global-q4_k_m.gguf \
+    "https://huggingface.co/CohereLabs/tiny-aya-global-GGUF/resolve/main/tiny-aya-global-q4_k_m.gguf"
 
 # Copy baked-in corpus (add docs to data/corpus/ before building)
 COPY data/corpus/ /data/corpus/

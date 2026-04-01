@@ -11,7 +11,7 @@ def detect_language(text: str) -> str:
 
 
 class Settings(BaseSettings):
-    model_path: str = "/data/models/tiny-aya-q4.gguf"
+    model_path: str = "/data/models/tiny-aya-global-q4_k_m.gguf"
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     chunk_size: int = 500
     chunk_overlap: int = 50
