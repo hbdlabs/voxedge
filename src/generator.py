@@ -1,4 +1,19 @@
+import jinja2
 from llama_cpp import Llama
+
+# Enable {% break %} / {% continue %} in Jinja2 templates embedded in GGUF models
+jinja2.defaults.DEFAULT_NAMESPACE  # ensure module loaded
+_original_env_init = jinja2.Environment.__init__
+
+
+def _patched_env_init(self, *args, **kwargs):
+    extensions = set(kwargs.get("extensions", []))
+    extensions.add("jinja2.ext.loopcontrols")
+    kwargs["extensions"] = list(extensions)
+    _original_env_init(self, *args, **kwargs)
+
+
+jinja2.Environment.__init__ = _patched_env_init
 
 
 PROMPT_TEMPLATE = """You are a helpful assistant at a community knowledge kiosk.
@@ -32,6 +47,7 @@ class Generator:
             n_threads=n_threads,
             n_gpu_layers=0,
             verbose=False,
+            chat_format="raw",
         )
 
     def generate(
