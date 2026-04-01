@@ -117,6 +117,7 @@ def create_app(
                 store=app.state.store,
                 chunk_size=settings.chunk_size,
                 chunk_overlap=settings.chunk_overlap,
+                source_name=upload.filename,
             )
             tmp_path.unlink()
             results.append({

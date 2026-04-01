@@ -29,13 +29,15 @@ def ingest_file(
     store: VectorStore,
     chunk_size: int = 500,
     chunk_overlap: int = 50,
+    source_name: str | None = None,
 ) -> IngestResult:
     """Parse, chunk, embed, and store a single document."""
+    name = source_name or path.name
     text = parse_file(path)
     chunks = chunk_text(text, chunk_size=chunk_size, overlap=chunk_overlap)
 
     if not chunks:
-        return IngestResult(file=path.name, chunks=0, language="unknown")
+        return IngestResult(file=name, chunks=0, language="unknown")
 
     language = detect_language(chunks[0])
     vectors = embedder.embed(chunks)
@@ -44,11 +46,11 @@ def ingest_file(
     points = []
     for i, (chunk, vector) in enumerate(zip(chunks, vectors)):
         points.append((
-            _point_id(path.name, i),
+            _point_id(name, i),
             vector,
             {
                 "text": chunk,
-                "source_file": path.name,
+                "source_file": name,
                 "chunk_index": i,
                 "language": language,
                 "ingested_at": now,
@@ -56,7 +58,7 @@ def ingest_file(
         ))
 
     store.upsert_batch(points)
-    return IngestResult(file=path.name, chunks=len(chunks), language=language)
+    return IngestResult(file=name, chunks=len(chunks), language=language)
 
 
 def ingest_directory(
