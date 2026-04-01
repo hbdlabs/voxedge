@@ -1,0 +1,22 @@
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    model_path: str = "/data/models/tiny-aya-q4.gguf"
+    embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    chunk_size: int = 500
+    chunk_overlap: int = 50
+    top_k: int = 5
+    score_threshold: float = 0.5
+    corpus_dir: str = "/data/corpus"
+    qdrant_dir: str = "/data/qdrant"
+    max_tokens: int = 512
+    host: str = "0.0.0.0"
+    port: int = 8080
+    n_ctx: int = 4096
+    n_threads: int = 4
+
+    model_config = {"env_prefix": "EDGE_"}
+
+
+settings = Settings()

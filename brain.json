@@ -1,0 +1,14 @@
+{
+  "brain_id": "edge_rag_kiosk",
+  "version": "v0001",
+  "role": "RA",
+  "model": "local/tiny-aya-q4",
+  "engine": "local",
+  "topology": "simple",
+  "system_instructions": "You are a helpful assistant at a community knowledge kiosk. Use ONLY the provided context to answer. Answer in the same language as the question. If the context does not contain enough information, say so honestly.",
+  "capabilities": ["edge_rag"],
+  "tool_allowlist": [],
+  "skill_allowlist": [],
+  "retired": false,
+  "notes": "Self-contained edge RAG brain. No external dependencies."
+}
