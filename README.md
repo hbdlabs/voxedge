@@ -494,6 +494,79 @@ docker cp edge-brain:/data/qdrant ./qdrant-backup
 docker run -d --name edge-brain-new -p 8080:8080 -v $(pwd)/qdrant-backup:/data/qdrant edge-brain
 ```
 
+## Retrieval Quality Guide
+
+The quality of answers depends entirely on how well the system retrieves the right chunks from your documents. Understanding your source material and how it gets processed is key to getting good results.
+
+### Know your documents
+
+Before ingesting, review what LiteParse extracts from your documents:
+
+```bash
+# See what text gets extracted from a PDF
+bunx @llamaindex/liteparse parse your_document.pdf --format text
+```
+
+Check for:
+- **Garbled text from screenshots or tables** — the spatial parser filters most of this, but complex layouts may still produce noise
+- **Important facts buried in tables** — tabular data often extracts poorly. If critical information lives in tables, consider adding a plain text summary document alongside the PDF
+- **Contradictory information** — if the same topic (e.g., phone budget) appears in multiple places with different numbers, the model may pick the wrong one
+- **Information split across pages** — a sentence that starts at the bottom of one page and continues at the top of the next may get split into different chunks
+
+### Check how documents get chunked
+
+The chunker splits text into 250-character overlapping windows. Short facts that land at chunk boundaries may end up in a chunk where they're surrounded by unrelated content:
+
+```bash
+# Preview how a document gets chunked
+python -c "
+from src.parser import parse_file
+from src.chunker import chunk_text
+from pathlib import Path
+
+text = parse_file(Path('your_document.pdf'))
+chunks = chunk_text(text, chunk_size=250, overlap=30)
+for i, chunk in enumerate(chunks):
+    print(f'--- Chunk {i} ---')
+    print(chunk)
+    print()
+"
+```
+
+If important facts end up buried at the end of a chunk with unrelated content at the start, the reranker may not score that chunk highly enough.
+
+### How retrieval works and where it can fail
+
+The query pipeline has three stages, each with its own failure mode:
+
+**1. Embedding search** (retrieve 20 candidates, threshold >= 0.3)
+- Failure mode: the question and the relevant chunk use very different vocabulary. The multilingual embedding model handles synonyms and cross-lingual matching well, but highly domain-specific terminology may not match.
+- Diagnosis: if the answer exists in your corpus but the system says "I don't have information about that", the embedding search didn't find it above the threshold.
+
+**2. Cross-encoder reranking** (pick best 5 from the 20 candidates)
+- Failure mode: a chunk about a related but wrong topic scores higher than the chunk with the correct answer. For example, a question about "PC budget" may match a chunk about "phone budget" because both discuss equipment pricing.
+- Diagnosis: the answer is wrong but the source file is correct — the reranker picked a plausible but wrong chunk from the right document.
+
+**3. LLM generation** (generate answer from the 5 chunks)
+- Failure mode: the right chunks are retrieved but the 3B model misinterprets, conflates numbers, or picks the wrong fact from the context.
+- Diagnosis: the source file and chunk are correct, but the answer contains a wrong number or mixes up details.
+
+### Improving retrieval
+
+**Phrasing matters.** Questions that use the same vocabulary as the source documents get better results. "Hvor mange dager kan jeg bruke egenmelding?" works better than "Hvor mange egenmeldingsdager har jeg?" if the document says "bruke egenmelding".
+
+**Add plain text summaries.** If a PDF has important information locked in tables, screenshots, or complex layouts, add a companion `.txt` file that restates the key facts in clean prose. This gives the system clean, chunkable text to work with.
+
+**Adjust chunk size.** The default 250 characters works well for documents with short, factual paragraphs. For documents with longer narrative sections, increasing `EDGE_CHUNK_SIZE` to 400-500 may help keep related facts together. For documents with many short facts (price lists, policy rules), 200 or even 150 may be better.
+
+**Adjust score threshold.** If the system says "I don't have information" for questions you know are covered, lower `EDGE_SCORE_THRESHOLD` from 0.3 to 0.2. If it gives wrong answers from irrelevant chunks, raise it to 0.4.
+
+**Adjust top_k.** More chunks to the LLM (higher `EDGE_TOP_K`) means the correct chunk is more likely to be included, but also gives the model more noise to sort through. 5 is a good default. Reduce to 3 if answers are unfocused, increase to 7 if the right information keeps getting excluded.
+
+### Testing your corpus
+
+After ingesting documents, test with questions where you know the expected answer. Compare the system's answer and source references against the actual document content. This is the most reliable way to identify retrieval gaps and tune the configuration for your specific documents.
+
 ## Licensing
 
 - **Tiny Aya Global**: CC-BY-NC (non-commercial). Commercial use requires contacting Cohere Sales.
