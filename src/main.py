@@ -164,7 +164,7 @@ def create_app(
             text=req.text,
             source_lang=source,
             target_lang=target,
-            max_tokens=settings.max_tokens * 3,
+            max_tokens=min(len(req.text.split()) * 3, 200),
         )
         return {
             "translation": translation,
