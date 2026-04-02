@@ -21,7 +21,7 @@ def query_brain(
     generator: Generator,
     reranker: Reranker | None = None,
     top_k: int = 3,
-    retrieve_k: int = 10,
+    retrieve_k: int = 20,
     score_threshold: float = 0.3,
     max_tokens: int = 512,
 ) -> QueryResult:
