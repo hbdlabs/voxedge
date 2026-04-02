@@ -41,6 +41,14 @@ The embedding model and the LLM are multilingual regardless of which reranker yo
 - **Grounded** -- answers cite their sources and the system refuses to answer when it has no relevant information
 - **Configurable** -- swap rerankers, adjust chunk size, tune retrieval thresholds, switch between full and chat mode
 
+### About Tiny Aya
+
+The language model is [Tiny Aya Global](https://huggingface.co/CohereLabs/tiny-aya-global) (3.35B parameters) by [Cohere Labs](https://cohere.com/research/aya). It supports 70+ languages and is part of the Aya open-science initiative. We run the Q4_K_M quantized version (2.1 GB) on CPU via llama-cpp-python.
+
+It comes in regional variants (global, earth, water, fire). We use **global** for balanced performance across all languages. Strong at translation and generation, weaker at math and reasoning — well suited for RAG where answers come from retrieved context.
+
+Licensed CC-BY-NC (non-commercial). Commercial use requires contacting Cohere.
+
 ### Stack
 
 | Component | Library | Role |
