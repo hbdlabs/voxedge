@@ -452,6 +452,7 @@ All settings are configurable via environment variables with the `EDGE_` prefix:
 
 ```bash
 # Override any default
+EDGE_MODE=full                # "full" = RAG + chat + translate, "chat" = chat + translate only
 EDGE_MODEL_PATH=~/models/tiny-aya-global-q4_k_m.gguf  # GGUF model location
 EDGE_RERANKER_MODEL=jinaai/jina-reranker-v2-base-multilingual  # reranker model
 EDGE_CHUNK_SIZE=300          # smaller chunks for more precise retrieval
@@ -461,6 +462,23 @@ EDGE_SCORE_THRESHOLD=0.4     # minimum similarity for retrieval
 EDGE_MAX_TOKENS=150          # max generation length
 EDGE_N_THREADS=8             # CPU threads for LLM (match your core count)
 EDGE_N_CTX=2048              # LLM context window (lower = less RAM)
+```
+
+### Deployment modes
+
+The system supports two modes via `EDGE_MODE`:
+
+**Full mode** (`EDGE_MODE=full`, default) — loads all components: embedder, vector store, reranker, and LLM. All endpoints available: `/query`, `/ingest`, `/corpus`, `/chat`, `/translate`, `/health`.
+
+**Chat mode** (`EDGE_MODE=chat`) — loads only the LLM. Available endpoints: `/chat`, `/translate`, `/health`. The RAG endpoints (`/query`, `/ingest`, `/corpus`) return 404.
+
+Chat mode is useful when you only need translation and conversation, without document retrieval. It starts faster and uses less RAM (~2.5 GB vs 4+ GB) since no embedder, reranker, or vector store is loaded.
+
+```bash
+# Chat-only deployment
+EDGE_MODE=chat \
+EDGE_MODEL_PATH=~/models/tiny-aya-global-q4_k_m.gguf \
+uvicorn src.main:app --host 0.0.0.0 --port 8080
 ```
 
 ### Choosing a reranker
