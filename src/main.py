@@ -46,38 +46,41 @@ def create_app(
         global _start_time
         _start_time = time.time()
 
-        if app.state.embedder is None:
-            app.state.embedder = Embedder(model_name=settings.embedding_model)
-        if app.state.store is None:
-            app.state.store = VectorStore(
-                path=settings.qdrant_dir, vector_size=384
-            )
         if app.state.generator is None:
             app.state.generator = Generator(
                 model_path=settings.model_path,
                 n_ctx=settings.n_ctx,
                 n_threads=settings.n_threads,
             )
-        if app.state.reranker is None:
-            app.state.reranker = Reranker(model_name=settings.reranker_model)
 
-        # Ingest baked-in corpus (only new files)
-        corpus_dir = Path(settings.corpus_dir)
-        if corpus_dir.exists():
-            existing_docs = {d["source_file"] for d in app.state.store.list_documents()}
-            supported = {".txt", ".md", ".pdf", ".docx", ".doc", ".pptx", ".xlsx"}
-            for f in sorted(corpus_dir.iterdir()):
-                if f.is_file() and f.suffix.lower() in supported and f.name not in existing_docs:
-                    ingest_file(
-                        f, app.state.embedder, app.state.store,
-                        chunk_size=settings.chunk_size,
-                        chunk_overlap=settings.chunk_overlap,
-                    )
+        if settings.mode == "full":
+            if app.state.embedder is None:
+                app.state.embedder = Embedder(model_name=settings.embedding_model)
+            if app.state.store is None:
+                app.state.store = VectorStore(
+                    path=settings.qdrant_dir, vector_size=384
+                )
+            if app.state.reranker is None:
+                app.state.reranker = Reranker(model_name=settings.reranker_model)
+
+            # Ingest baked-in corpus (only new files)
+            corpus_dir = Path(settings.corpus_dir)
+            if corpus_dir.exists():
+                existing_docs = {d["source_file"] for d in app.state.store.list_documents()}
+                supported = {".txt", ".md", ".pdf", ".docx", ".doc", ".pptx", ".xlsx"}
+                for f in sorted(corpus_dir.iterdir()):
+                    if f.is_file() and f.suffix.lower() in supported and f.name not in existing_docs:
+                        ingest_file(
+                            f, app.state.embedder, app.state.store,
+                            chunk_size=settings.chunk_size,
+                            chunk_overlap=settings.chunk_overlap,
+                        )
 
         yield
 
-        app.state.store.flush()
-        app.state.store.close()
+        if app.state.store:
+            app.state.store.flush()
+            app.state.store.close()
 
     app = FastAPI(title="Edge RAG Brain", lifespan=lifespan)
     app.state.embedder = embedder
@@ -85,17 +88,24 @@ def create_app(
     app.state.generator = generator
     app.state.reranker = reranker
 
+    def _require_rag():
+        if settings.mode != "full":
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="RAG endpoints not available in chat mode. Set EDGE_MODE=full to enable.")
+
     @app.get("/health")
     def health():
         return {
             "status": "ok",
+            "mode": settings.mode,
             "model_loaded": app.state.generator is not None,
-            "corpus_chunks": app.state.store.count(),
+            "corpus_chunks": app.state.store.count() if app.state.store else 0,
             "uptime_seconds": int(time.time() - _start_time),
         }
 
     @app.get("/corpus")
     def corpus():
+        _require_rag()
         docs = app.state.store.list_documents()
         return {
             "documents": docs,
@@ -104,6 +114,7 @@ def create_app(
 
     @app.delete("/corpus/{filename}")
     def delete_document(filename: str):
+        _require_rag()
         deleted = app.state.store.delete_by_source(filename)
         return {
             "deleted": filename,
@@ -113,6 +124,7 @@ def create_app(
 
     @app.post("/query")
     def query(req: QueryRequest):
+        _require_rag()
         result = query_brain(
             question=req.question,
             embedder=app.state.embedder,
@@ -162,6 +174,7 @@ def create_app(
 
     @app.post("/ingest")
     async def ingest(files: list[UploadFile]):
+        _require_rag()
         results = []
         for upload in files:
             with tempfile.NamedTemporaryFile(delete=False, suffix=Path(upload.filename or "upload").suffix) as tmp:

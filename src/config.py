@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     port: int = 8080
     n_ctx: int = 4096
     n_threads: int = 4
+    mode: str = "full"  # "full" = RAG + chat + translate, "chat" = chat + translate only
 
     model_config = {"env_prefix": "EDGE_"}
 
