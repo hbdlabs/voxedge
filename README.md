@@ -419,6 +419,7 @@ All settings are configurable via environment variables with the `EDGE_` prefix:
 | Setting | Default | Purpose |
 |---|---|---|
 | `EDGE_MODE` | `full` | `full` = RAG + chat + translate, `chat` = chat + translate only |
+| `EDGE_API_KEY` | *(empty)* | If set, all requests require `Authorization: Bearer <key>`. Empty = no auth. |
 | `EDGE_MODEL_PATH` | `/data/models/tiny-aya-global-q4_k_m.gguf` | GGUF model location |
 | `EDGE_EMBEDDING_MODEL` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | Embedding model |
 | `EDGE_RERANKER_MODEL` | `jinaai/jina-reranker-v2-base-multilingual` | Reranker model |
@@ -511,6 +512,29 @@ docker run -d --name edge-brain -p 8080:8080 -v edge-brain-data:/data/qdrant edg
 # Local: delete the qdrant directory
 rm -rf data/qdrant
 ```
+
+### API authentication
+
+By default, the API has no authentication (suitable for local kiosks and air-gapped devices). For network deployments, set an API key:
+
+```bash
+# Docker
+docker run -d -p 8080:8080 -e EDGE_API_KEY=your-secret-key edge-brain
+
+# Fly.io: set as a secret
+fly secrets set EDGE_API_KEY=your-secret-key -a edge-rag-brain
+```
+
+All requests (except `/health`) must include the key:
+
+```bash
+curl -H "Authorization: Bearer your-secret-key" \
+  http://localhost:8080/query \
+  -H "Content-Type: application/json" \
+  -d '{"question": "How do I prevent malaria?"}'
+```
+
+Requests without a valid key receive a 401 response. The `/health` endpoint is always accessible (for load balancer and orchestrator health checks).
 
 ### Remote access with ngrok
 

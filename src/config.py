@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     n_ctx: int = 4096
     n_threads: int = 4
     mode: str = "full"  # "full" = RAG + chat + translate, "chat" = chat + translate only
+    api_key: str = ""  # If set, all requests require Bearer token. Empty = no auth.
 
     model_config = {"env_prefix": "EDGE_"}
 

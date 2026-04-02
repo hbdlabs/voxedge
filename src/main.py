@@ -3,7 +3,8 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, UploadFile
+from fastapi import FastAPI, Request, UploadFile
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from src.config import detect_language, settings
@@ -87,6 +88,16 @@ def create_app(
     app.state.store = store
     app.state.generator = generator
     app.state.reranker = reranker
+
+    if settings.api_key:
+        @app.middleware("http")
+        async def auth_middleware(request: Request, call_next):
+            if request.url.path == "/health":
+                return await call_next(request)
+            auth = request.headers.get("authorization", "")
+            if auth != f"Bearer {settings.api_key}":
+                return JSONResponse(status_code=401, content={"detail": "Invalid or missing API key"})
+            return await call_next(request)
 
     def _require_rag():
         if settings.mode != "full":
