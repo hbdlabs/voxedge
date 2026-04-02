@@ -1,8 +1,39 @@
 # Edge RAG Brain
 
-Self-contained, offline multilingual RAG system. Runs entirely in a single process with no external dependencies. Ingest documents, ask questions in any of 50+ languages, get grounded answers with source references.
+## What is this
 
-For technical architecture details, see [docs/architecture.md](docs/architecture.md).
+A knowledge kiosk in a box. Load it with documents -- health guides, farming manuals, government policies, employee handbooks, whatever -- and people can ask questions in their own language and get answers grounded in those documents.
+
+It is built for places where there is no reliable internet: rural health posts, community centers, field offices, schools. Everything runs locally on a single device. No cloud APIs, no network calls, no data leaving the machine.
+
+The system uses RAG (Retrieval-Augmented Generation), which means it does not just generate text from a language model -- it first searches the loaded documents for relevant passages, then generates an answer based only on what it found. This keeps answers factual and traceable to source documents.
+
+### How it works
+
+1. **You load documents** (PDF, text, Word) into the system -- either baked into the container image or uploaded via API at runtime.
+2. **Documents are split into chunks**, converted to numerical vectors by a multilingual embedding model, and stored in a local vector database.
+3. **When someone asks a question**, the question is also converted to a vector, the most relevant chunks are retrieved, a cross-encoder reranker selects the best matches, and a local language model generates an answer using only those chunks as context.
+4. **The answer comes back with source references** so the user can verify where the information came from.
+
+### What makes it different
+
+- **Fully offline** -- runs on a Raspberry Pi, laptop, or kiosk with no internet
+- **Multilingual** -- questions and documents can be in different languages (50+ supported for retrieval, 70+ for generation). Ask in Vietnamese, get answers from English documents.
+- **Self-contained** -- single Docker container, ~3.2 GB, includes the language model, embedding model, reranker, vector database, document parser, and API server
+- **Grounded** -- answers cite their sources and the system refuses to answer when it has no relevant information
+
+### Stack
+
+| Component | Library | Role |
+|---|---|---|
+| Document parsing | LiteParse (Bun) | Extract text from PDF, DOCX, images |
+| Text embedding | FastEmbed (ONNX) | Convert text to 384-dim multilingual vectors |
+| Vector storage | Qdrant Edge | Store and search vectors locally on disk |
+| Reranking | FastEmbed Cross-Encoder (ONNX) | Precision-filter retrieved chunks |
+| Generation | llama-cpp-python + Tiny Aya 3.35B (GGUF) | Generate multilingual answers on CPU |
+| API | FastAPI | HTTP endpoints for query, ingest, health, corpus |
+
+For detailed component descriptions and data flow diagrams, see [docs/architecture.md](docs/architecture.md).
 
 ## Requirements
 
