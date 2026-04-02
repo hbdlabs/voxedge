@@ -39,7 +39,9 @@ The system ingests documents, splits them into chunks, embeds them as vectors, s
 
 ### config.py -- Settings
 
-Central configuration loaded from environment variables with the `EDGE_` prefix.
+Central configuration using Pydantic Settings. All values load from environment variables with the `EDGE_` prefix, with sensible defaults for container deployment.
+
+Pydantic Settings is a library that maps environment variables to typed Python attributes with validation. It allows the same code to run in development (with defaults) and production (with env vars) without any code changes.
 
 | Setting | Default | Purpose |
 |---|---|---|
@@ -55,9 +57,9 @@ Central configuration loaded from environment variables with the `EDGE_` prefix.
 | `EDGE_N_CTX` | `4096` | LLM context window size |
 | `EDGE_N_THREADS` | `4` | CPU threads for LLM inference |
 
-Also provides `detect_language(text)` -- a shared utility wrapping `langdetect` with a fallback to `"unknown"`.
+Also provides `detect_language(text)` -- a shared utility wrapping langdetect with a fallback to `"unknown"`. langdetect is a port of Google's language-detection library that identifies the language of a text string from its character n-grams.
 
-**Used by:** main.py (reads settings to initialize all components)
+**Used by:** main.py (reads settings to initialize all components), ingest.py and query.py (detect_language)
 
 ---
 
@@ -66,17 +68,19 @@ Also provides `detect_language(text)` -- a shared utility wrapping `langdetect` 
 Extracts raw text from document files. Two code paths:
 
 - **Plain text** (`.txt`, `.md`): read directly with `path.read_text()`. No external dependencies.
-- **Rich documents** (`.pdf`, `.docx`, `.pptx`, `.xlsx`, images): shells out to LiteParse via Bun as a subprocess: `bunx @llamaindex/liteparse parse <file> --format text`. LiteParse handles PDF parsing, OCR, and Office document conversion.
+- **Rich documents** (`.pdf`, `.docx`, `.pptx`, `.xlsx`, images): shells out to LiteParse via Bun as a subprocess: `bunx @llamaindex/liteparse parse <file> --format text`.
 
-**Input:** file path  
-**Output:** extracted text as a single string  
+**LiteParse** is a document parser by LlamaIndex that extracts text from PDFs using PDF.js, handles Office documents via LibreOffice conversion, and supports OCR via Tesseract.js. It runs on Bun (a fast JavaScript runtime, alternative to Node.js) and is invoked as a CLI subprocess from Python. The `--format text` flag returns plain extracted text; LiteParse also supports `--format json` for spatial layout with bounding boxes.
+
+**Input:** file path
+**Output:** extracted text as a single string
 **Used by:** ingest.py
 
 ---
 
 ### chunker.py -- Text Splitting
 
-Splits extracted text into overlapping windows of fixed character length. The overlap ensures that information at chunk boundaries isn't lost during retrieval.
+Splits extracted text into overlapping windows of fixed character length. The overlap ensures that information at chunk boundaries isn't lost during retrieval -- a sentence that spans two chunks will appear in both, so it can be found regardless of which chunk the search matches.
 
 With defaults (500 chars, 50 overlap), a 1200-character document produces:
 ```
@@ -85,32 +89,39 @@ Chunk 1: chars 450-949     (50 char overlap with chunk 0)
 Chunk 2: chars 900-1199    (50 char overlap with chunk 1)
 ```
 
-**Input:** text string, chunk_size, overlap  
-**Output:** list of text chunks  
+This is a character-based sliding window approach. Alternative strategies include semantic chunking (split at sentence or paragraph boundaries) and recursive chunking (split at decreasing granularity), which may produce more coherent chunks but add complexity.
+
+**Input:** text string, chunk_size, overlap
+**Output:** list of text chunks
 **Used by:** ingest.py
 
 ---
 
 ### embedder.py -- Text-to-Vector Conversion
 
-Wraps FastEmbed's `TextEmbedding` class. Converts text strings into 384-dimensional float vectors using the `paraphrase-multilingual-MiniLM-L12-v2` model.
+Wraps FastEmbed's `TextEmbedding` class using the `paraphrase-multilingual-MiniLM-L12-v2` model.
 
-This model is the key to cross-lingual retrieval. It maps text from 50+ languages into a shared vector space, so a Norwegian question and an English document about the same topic land near each other in 384-dimensional space.
+**FastEmbed** is a Python library by Qdrant for generating text embeddings. It uses ONNX Runtime for inference, which means models run on CPU without PyTorch or GPU dependencies. Models are downloaded from HuggingFace on first use and cached locally.
 
-- **Runtime:** ONNX (no GPU, no PyTorch)
-- **Model size:** ~220 MB (downloaded and cached on first use)
+**paraphrase-multilingual-MiniLM-L12-v2** is a sentence-transformer model trained on parallel data across 50+ languages. It is a bi-encoder: it processes each text independently and produces a fixed 384-dimensional vector. Texts with similar meaning land near each other in this vector space regardless of language. This is what enables cross-lingual retrieval -- a Norwegian question and an English document about the same topic produce vectors with high cosine similarity.
+
+- **Runtime:** ONNX Runtime (no GPU, no PyTorch)
+- **Model size:** ~220 MB
+- **Output:** 384-dimensional float vector per input text
 - **Latency:** ~20-50 ms per embed call
-- **Languages:** 50+ including en, es, fr, de, no, vi, zh, ja, ko, ar, hi, ...
+- **Languages:** 50+ including en, es, fr, de, no, vi, zh, ja, ko, ar, hi, th, tr, uk, ...
 
-**Input:** list of text strings  
-**Output:** list of 384-float vectors  
+**Input:** list of text strings
+**Output:** list of 384-float vectors
 **Used by:** ingest.py (embed chunks for storage), query.py (embed question for search)
 
 ---
 
 ### store.py -- Vector Storage and Search
 
-Wraps Qdrant Edge (`qdrant-edge-py`), an embedded vector database that runs in-process. Similar to SQLite but for vectors.
+Wraps Qdrant Edge (`qdrant-edge-py`), an embedded vector database.
+
+**Qdrant Edge** is a lightweight, in-process vector search engine by Qdrant, designed for edge devices. It operates similarly to SQLite -- data is stored on local disk and accessed in-process, with no server or network required. Vectors are stored in memory-mapped files, so the OS pages data in and out of RAM as needed. For small datasets (thousands of chunks), search is brute-force cosine similarity. For larger datasets, Qdrant Edge supports HNSW (Hierarchical Navigable Small World) indexing for approximate nearest neighbor search.
 
 Key operations:
 
@@ -123,7 +134,7 @@ Key operations:
 | `list_documents()` | Scroll all chunks, aggregate by source file |
 | `flush()` / `close()` | Persist to disk and shut down |
 
-Data is stored on disk at `EDGE_QDRANT_DIR` using memory-mapped files. The shard auto-loads on restart if data exists, or creates a fresh shard if not.
+Data is stored on disk at `EDGE_QDRANT_DIR`. The shard auto-loads on restart if data exists, or creates a fresh shard if not.
 
 Each stored point contains:
 ```
@@ -140,7 +151,7 @@ Each stored point contains:
 }
 ```
 
-Point IDs are generated via SHA-256 hash of `source_file:chunk_index`, making re-ingestion of the same file idempotent.
+Point IDs are generated via SHA-256 hash of `source_file:chunk_index`, making re-ingestion of the same file idempotent -- upserting the same ID overwrites the existing point.
 
 **Used by:** ingest.py (store vectors), query.py (search vectors), main.py (count, list, lifecycle)
 
@@ -148,23 +159,30 @@ Point IDs are generated via SHA-256 hash of `source_file:chunk_index`, making re
 
 ### reranker.py -- Cross-Encoder Reranking
 
-Wraps FastEmbed's `TextCrossEncoder` using the `Xenova/ms-marco-MiniLM-L-6-v2` model (80 MB).
+Wraps FastEmbed's `TextCrossEncoder` using the `Xenova/ms-marco-MiniLM-L-6-v2` model.
 
-The embedder performs fast but approximate matching (bi-encoder: question and chunks are embedded independently). The reranker performs slower but precise matching (cross-encoder: question and each chunk are processed together, allowing token-level attention).
+**Cross-encoder reranking** is a second-stage retrieval technique. The embedder (bi-encoder) is fast but approximate: it encodes the question and each chunk independently, then compares their vectors. A cross-encoder is slower but more precise: it takes the question and a chunk as a single concatenated input, allowing full token-level attention between them. This means it can understand the relationship between question and chunk more accurately than vector similarity alone.
 
-Pipeline: retrieve 10 candidates loosely with the embedder, then rerank to pick the best 3 with the cross-encoder.
+**ms-marco-MiniLM-L-6-v2** is a cross-encoder model trained on the MS MARCO passage ranking dataset. It takes a (query, passage) pair and outputs a relevance score. It runs via ONNX Runtime, same as the embedder.
 
-This was the single biggest quality improvement to the system, taking retrieval accuracy from 6/10 to 10/10 on known-answer tests.
+- **Model size:** ~80 MB
+- **Languages:** primarily English, but effective for scoring multilingual retrieved chunks against English-language questions
 
-**Input:** question string + list of candidate chunks from vector search  
-**Output:** top_k chunks sorted by cross-encoder relevance score  
+The pipeline: retrieve 10 candidates loosely with the bi-encoder (score threshold 0.3), then rerank to pick the best 3 with the cross-encoder.
+
+**Input:** question string + list of candidate chunks from vector search
+**Output:** top_k chunks sorted by cross-encoder relevance score
 **Used by:** query.py (between retrieval and generation)
 
 ---
 
 ### generator.py -- Answer Generation
 
-Wraps `llama-cpp-python` to load and run a Tiny Aya 3.35B GGUF model locally on CPU.
+Wraps `llama-cpp-python` to load and run a Tiny Aya GGUF model locally on CPU.
+
+**llama-cpp-python** is a Python binding for llama.cpp, a C++ library for running LLM inference on consumer hardware. It loads models in GGUF format (a binary format for quantized model weights) and runs inference on CPU with optional GPU offloading. Quantization (Q4_K_M in our case) reduces the model from ~6.7 GB (full precision) to ~2.1 GB with minimal quality loss.
+
+**Tiny Aya Global** is a 3.35B parameter multilingual language model by Cohere Labs. It is instruction-tuned for general-purpose multilingual generation across 70+ languages. The "global" variant is the general-purpose instruction-tuned version (as opposed to "earth", "water", "fire" which are specialized variants).
 
 The prompt template enforces grounded generation:
 ```
@@ -189,14 +207,14 @@ Answer:
 
 Key generation parameters:
 - `temperature=0.3` -- low randomness for factual answers
-- `repeat_penalty=1.3` -- prevents repetitive output
-- `stop=["\nQuestion:", "\n\n\n", "\nNote:", "(Note:", "\nAnswer:"]` -- stops generation at natural boundaries, prevents multi-answer rambling
+- `repeat_penalty=1.3` -- penalizes tokens that have already appeared, preventing repetitive loops
+- `stop=["\nQuestion:", "\n\n\n", "\nNote:", "(Note:", "\nAnswer:"]` -- stops generation at natural boundaries, prevents the model from generating multiple answer blocks
 - `max_tokens=100` -- keeps answers concise
 
-Also includes a Jinja2 monkey-patch to add `loopcontrols` extension support, which is needed because the Tiny Aya GGUF embeds a chat template that uses `{% break %}`.
+Also includes a Jinja2 monkey-patch to add the `loopcontrols` extension, which is needed because the Tiny Aya GGUF embeds a chat template that uses `{% break %}` -- a Jinja2 tag not available without this extension.
 
-**Input:** list of context chunks + question  
-**Output:** generated answer string  
+**Input:** list of context chunks + question
+**Output:** generated answer string
 **Used by:** query.py
 
 ---
@@ -215,8 +233,8 @@ Document file
 ```
 
 Two entry points:
-- `ingest_file(path)` -- ingest a single document
-- `ingest_directory(directory)` -- ingest all supported files in a folder
+- `ingest_file(path)` -- ingest a single document. Accepts an optional `source_name` parameter to store the original filename when ingesting from temp files (e.g., uploads).
+- `ingest_directory(directory)` -- ingest all supported files (`.txt`, `.md`, `.pdf`, `.docx`, `.doc`, `.pptx`, `.xlsx`) in a folder.
 
 Returns `IngestResult(file, chunks, language)` for each document.
 
@@ -233,13 +251,13 @@ User question
     --> detect_language     (identify question language)
     --> embedder.py         (question --> 384-dim vector)
     --> store.py            (retrieve top 10 candidates, threshold >= 0.3)
-    --> [empty guard]       (if 0 results: return "I don't have information")
+    --> [empty guard]       (if 0 results: return canned response, skip LLM)
     --> reranker.py         (cross-encoder picks best 3 chunks)
     --> generator.py        (LLM generates grounded answer from context)
     --> QueryResult         (answer + sources + language)
 ```
 
-The empty-sources guard prevents the LLM from being called when no relevant context exists. Without it, the model would hallucinate an answer from its training data.
+The empty-sources guard is a code-level check: if vector search returns zero results above the threshold, a static "I don't have information about that." response is returned immediately without calling the LLM. This prevents the model from answering questions that have no basis in the corpus.
 
 **Used by:** main.py (`/query` endpoint)
 
@@ -249,12 +267,14 @@ The empty-sources guard prevents the LLM from being called when no relevant cont
 
 The entry point that wires everything together.
 
+**FastAPI** is a Python web framework for building HTTP APIs. It uses Pydantic for request/response validation and supports async endpoints. Uvicorn is the ASGI server that runs the application.
+
 **Startup (lifespan handler):**
 1. Initialize Embedder (loads ONNX model, ~220 MB)
 2. Initialize VectorStore (opens or creates Qdrant Edge shard)
 3. Initialize Generator (loads GGUF model into RAM, ~2.1 GB)
 4. Initialize Reranker (loads cross-encoder, ~80 MB)
-5. Ingest baked-in corpus -- compares files in `EDGE_CORPUS_DIR` against already-indexed documents, ingests only new files
+5. Ingest baked-in corpus -- compares files in `EDGE_CORPUS_DIR` against already-indexed documents (via `store.list_documents()`), ingests only files not already present
 
 **Shutdown:** flush and close Qdrant Edge shard.
 
@@ -262,12 +282,12 @@ The entry point that wires everything together.
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/query` | POST | Ask a question, get a grounded answer with sources |
-| `/ingest` | POST | Upload document files (multipart), index them |
-| `/health` | GET | Status, model loaded, chunk count, uptime |
-| `/corpus` | GET | List all indexed documents with chunk counts |
+| `/query` | POST | Accept a question (JSON), return a grounded answer with source references |
+| `/ingest` | POST | Accept document files (multipart upload), parse, chunk, embed, and store them |
+| `/health` | GET | Return status, whether the model is loaded, total chunk count, and uptime |
+| `/corpus` | GET | List all indexed documents with their chunk counts, languages, and ingestion timestamps |
 
-Uses a factory pattern (`create_app()`) that accepts pre-built components for testing. In production, components are `None` and initialized during startup.
+Uses a factory pattern (`create_app()`) that accepts pre-built components for testing. In production, components are `None` and initialized during the lifespan startup phase.
 
 ---
 
@@ -350,7 +370,7 @@ Python 3.11-slim base
 | RAM | 4 GB |
 | CPU | 4 cores (ARM or x86) |
 | Disk | 4 GB (image) + storage for vectors |
-| Network | None (fully offline) |
+| Network | None (fully offline after deployment) |
 
 ### Startup Time
 
@@ -377,14 +397,14 @@ Python 3.11-slim base
 |---|---|
 | Score threshold (0.3) | Irrelevant chunks reaching the reranker |
 | Cross-encoder reranker | Wrong chunks reaching the LLM |
-| Empty-sources guard | Hallucination when no context exists |
+| Empty-sources guard | LLM being called when no relevant context exists |
 | Grounding prompt | LLM adding information from its own knowledge |
-| repeat_penalty (1.3) | Repetitive / looping output |
+| repeat_penalty (1.3) | Repetitive or looping output |
 | Stop sequences | Multi-answer rambling |
 | max_tokens (100) | Overly long, unfocused answers |
 | Deterministic point IDs | Duplicate chunks on re-ingestion |
 | Startup dedup check | Re-indexing already-ingested corpus files |
 
-## Test Results
+## Test Coverage
 
-27 unit/integration tests + 1 end-to-end test with real models. Known-answer evaluation on 10 factual questions from the corpus achieved 10/10 accuracy after adding the cross-encoder reranker.
+27 unit/integration tests + 1 end-to-end test with real models.
