@@ -103,6 +103,33 @@ def create_app(
             "uptime_seconds": int(time.time() - _start_time),
         }
 
+    @app.get("/info")
+    def info():
+        result = {
+            "mode": settings.mode,
+            "models": {
+                "llm": settings.model_path,
+                "llm_context": settings.n_ctx,
+                "llm_threads": settings.n_threads,
+            },
+            "config": {
+                "local_language": settings.local_language,
+                "max_tokens": settings.max_tokens,
+            },
+        }
+        if settings.mode == "full" and app.state.store:
+            store_info = app.state.store.info()
+            docs = app.state.store.list_documents()
+            result["models"]["embedding"] = settings.embedding_model
+            result["models"]["reranker"] = settings.reranker_model
+            result["config"]["chunk_size"] = settings.chunk_size
+            result["config"]["chunk_overlap"] = settings.chunk_overlap
+            result["config"]["top_k"] = settings.top_k
+            result["config"]["score_threshold"] = settings.score_threshold
+            result["store"] = store_info
+            result["documents"] = docs
+        return result
+
     @app.get("/corpus")
     def corpus():
         _require_rag()

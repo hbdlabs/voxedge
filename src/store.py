@@ -93,6 +93,16 @@ class VectorStore:
             offset = next_offset
         return list(docs.values())
 
+    def info(self) -> dict:
+        """Return shard statistics."""
+        si = self._shard.info()
+        return {
+            "segments": si.segments_count,
+            "points": si.points_count,
+            "indexed_vectors": si.indexed_vectors_count,
+            "vector_size": self._vector_size,
+        }
+
     def delete_by_source(self, source_file: str) -> int:
         """Delete all points for a given source file. Returns count deleted."""
         count_before = self.count()
