@@ -6,6 +6,9 @@ from qdrant_edge import (
     EdgeConfig,
     EdgeShard,
     EdgeVectorParams,
+    FieldCondition,
+    Filter,
+    MatchValue,
     Point,
     QueryRequest,
     Query,
@@ -89,6 +92,18 @@ class VectorStore:
                 break
             offset = next_offset
         return list(docs.values())
+
+    def delete_by_source(self, source_file: str) -> int:
+        """Delete all points for a given source file. Returns count deleted."""
+        count_before = self.count()
+        self._shard.update(
+            UpdateOperation.delete_points_by_filter(
+                Filter(
+                    must=[FieldCondition(key="source_file", match=MatchValue(value=source_file))]
+                )
+            )
+        )
+        return count_before - self.count()
 
     def flush(self) -> None:
         self._shard.flush()

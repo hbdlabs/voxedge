@@ -102,6 +102,15 @@ def create_app(
             "total_chunks": app.state.store.count(),
         }
 
+    @app.delete("/corpus/{filename}")
+    def delete_document(filename: str):
+        deleted = app.state.store.delete_by_source(filename)
+        return {
+            "deleted": filename,
+            "chunks_removed": deleted,
+            "total_chunks": app.state.store.count(),
+        }
+
     @app.post("/query")
     def query(req: QueryRequest):
         result = query_brain(
