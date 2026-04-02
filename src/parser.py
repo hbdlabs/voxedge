@@ -9,7 +9,7 @@ _PLAINTEXT_EXTENSIONS = {".txt", ".md", ".text", ".markdown"}
 _MIN_FONT_SIZE = 8
 
 # Footer/header region (within this many points of page top/bottom)
-_MARGIN_Y = 60
+_MARGIN_Y = 35
 
 
 def parse_file(path: Path) -> str:
