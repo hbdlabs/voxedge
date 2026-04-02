@@ -52,8 +52,13 @@ Sample documents for testing are in `examples/corpus/`.
 ### 1. Create virtual environment
 
 ```bash
+# macOS / Linux
 python3.11 -m venv .venv
 source .venv/bin/activate
+
+# Windows
+py -3.11 -m venv .venv
+.venv\Scripts\activate
 ```
 
 ### 2. Install dependencies
@@ -64,12 +69,19 @@ pip install -e ".[dev]"
 
 This installs all runtime dependencies (FastEmbed, qdrant-edge-py, llama-cpp-python, LiteParse, FastAPI, etc.) plus dev dependencies (pytest, httpx).
 
-llama-cpp-python builds from source and requires `cmake` and a C++ compiler. On macOS these come with Xcode Command Line Tools. On Linux, install `build-essential cmake`.
+llama-cpp-python builds from source and requires `cmake` and a C++ compiler:
+- **macOS**: Xcode Command Line Tools (`xcode-select --install`)
+- **Linux**: `apt-get install build-essential cmake`
+- **Windows**: Visual Studio Build Tools with "C++ build tools" workload, plus CMake (`winget install cmake`)
 
 ### 3. Install Bun
 
 ```bash
+# macOS / Linux
 curl -fsSL https://bun.sh/install | bash
+
+# Windows
+powershell -c "irm bun.sh/install.ps1 | iex"
 ```
 
 Bun is needed for LiteParse (PDF/DOCX parsing). If you only use `.txt` and `.md` files or run in chat mode, Bun is not required.
