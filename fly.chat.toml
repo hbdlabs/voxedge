@@ -15,9 +15,9 @@ primary_region = 'arn'
   min_machines_running = 1
 
 [[vm]]
-  memory = '4096'
-  cpu_kind = 'shared'
-  cpus = 4
+  memory = '8192'
+  cpu_kind = 'performance'
+  cpus = 2
 
 [checks]
   [checks.health]
