@@ -68,6 +68,6 @@ class Generator:
             temperature=0.3,
             top_p=0.9,
             repeat_penalty=1.3,
-            stop=["\nQuestion:", "\n\n\n", "\nNote:", "(Note:"],
+            stop=["\nQuestion:", "\n\n\n", "\nNote:", "(Note:", "\nAnswer:"],
         )
         return result["choices"][0]["text"].strip()
