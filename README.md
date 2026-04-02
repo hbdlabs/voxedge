@@ -498,6 +498,22 @@ docker run -d --name edge-brain-new -p 8080:8080 -v $(pwd)/qdrant-backup:/data/q
 
 The quality of answers depends entirely on how well the system retrieves the right chunks from your documents. Understanding your source material and how it gets processed is key to getting good results.
 
+### How LiteParse handles documents
+
+LiteParse's approach to document parsing is to preserve spatial structure rather than convert it away. Instead of transforming a PDF into markdown or HTML (which loses layout information), LiteParse extracts text with its original positioning — each text item comes with x/y coordinates, font size, and a confidence score. This means the physical structure of the document (headings, columns, tables, margins) is retained as data, not interpreted and flattened.
+
+We use this spatial data in `parser.py` to reconstruct clean text. The parser groups text items into lines by Y position, identifies garbled regions (OCR artifacts from screenshots, tiny mixed font sizes) and filters them out, and strips headers and footers by their position on the page. The result is cleaner text than a naive `--format text` extraction, because the spatial information tells us which parts of the page are real content and which are noise.
+
+You can inspect the raw spatial output to understand what LiteParse sees:
+
+```bash
+# Spatial JSON with bounding boxes
+bunx @llamaindex/liteparse parse your_document.pdf --format json | python3 -m json.tool
+
+# Plain text (what the default text mode produces, before our spatial filtering)
+bunx @llamaindex/liteparse parse your_document.pdf --format text
+```
+
 ### Know your documents
 
 Before ingesting, review what LiteParse extracts from your documents:
