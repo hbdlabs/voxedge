@@ -1,7 +1,7 @@
 [project]
-name = "ll-edge-brain"
+name = "voxedge"
 version = "0.1.0"
-description = "Self-contained offline multilingual RAG system for edge devices"
+description = "Multilingual AI that runs anywhere, without internet"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 readme = "README.md"

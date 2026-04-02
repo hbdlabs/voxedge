@@ -83,7 +83,7 @@ def create_app(
             app.state.store.flush()
             app.state.store.close()
 
-    app = FastAPI(title="Edge RAG Brain", lifespan=lifespan)
+    app = FastAPI(title="VoxEdge", lifespan=lifespan)
     app.state.embedder = embedder
     app.state.store = store
     app.state.generator = generator

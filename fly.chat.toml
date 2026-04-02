@@ -1,4 +1,4 @@
-app = 'edge-rag-brain'
+app = 'voxedge'
 primary_region = 'arn'
 
 [build]

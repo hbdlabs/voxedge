@@ -1,5 +1,5 @@
 {
-  "brain_id": "edge_rag_kiosk",
+  "brain_id": "voxedge",
   "version": "v0001",
   "role": "RA",
   "model": "local/tiny-aya-q4",

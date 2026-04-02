@@ -1,4 +1,4 @@
-# Edge RAG Brain
+# VoxEdge
 
 *Built by hbdlabs — making smart systems available for everyone, everywhere.*
 
@@ -167,7 +167,7 @@ Startup takes 15-30 seconds in full mode (loading all models + indexing corpus),
 cp your_documents/*.pdf data/corpus/
 
 # Build the image (~10 min first time, downloads 2.1 GB model)
-docker build -t edge-brain .
+docker build -t voxedge .
 ```
 
 ### Run
@@ -175,20 +175,20 @@ docker build -t edge-brain .
 ```bash
 # Full mode
 docker run -d \
-  --name edge-brain \
+  --name voxedge \
   -p 8080:8080 \
-  -v edge-brain-data:/data/qdrant \
-  edge-brain
+  -v voxedge-data:/data/qdrant \
+  voxedge
 
 # Chat mode
 docker run -d \
-  --name edge-brain \
+  --name voxedge \
   -p 8080:8080 \
   -e EDGE_MODE=chat \
-  edge-brain
+  voxedge
 ```
 
-The volume mount (`-v edge-brain-data:/data/qdrant`) persists the vector index across container restarts. Not needed in chat mode.
+The volume mount (`-v voxedge-data:/data/qdrant`) persists the vector index across container restarts. Not needed in chat mode.
 
 ### Verify
 
@@ -202,14 +202,14 @@ Two fly configs are provided. Performance CPUs are required — shared CPUs cann
 
 **Full mode** (performance 4-core, 8 GB, persistent volume for vector storage):
 ```bash
-fly apps create edge-rag-brain
-fly volumes create edge_brain_data --region arn --size 5
+fly apps create voxedge
+fly volumes create voxedge_data --region arn --size 5
 fly deploy --config fly.full.toml --remote-only
 ```
 
 **Chat mode** (performance 2-core, 8 GB, no volume needed):
 ```bash
-fly apps create edge-rag-brain
+fly apps create voxedge
 fly deploy --config fly.chat.toml --remote-only
 ```
 
@@ -234,7 +234,7 @@ spec:
     spec:
       containers:
       - name: brain
-        image: edge-brain:latest
+        image: voxedge:latest
         ports:
         - containerPort: 8080
         resources:
@@ -260,7 +260,7 @@ spec:
       volumes:
       - name: qdrant-storage
         persistentVolumeClaim:
-          claimName: edge-brain-pvc
+          claimName: voxedge-pvc
 ---
 apiVersion: v1
 kind: Service
@@ -275,7 +275,7 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: edge-brain-pvc
+  name: voxedge-pvc
 spec:
   accessModes: ["ReadWriteOnce"]
   resources:
@@ -298,17 +298,17 @@ sudo usermod -aG docker $USER
 
 **Pull from registry:**
 ```bash
-docker pull ghcr.io/YOUR_USER/edge-brain:latest
-docker run -d -p 8080:8080 -v edge-data:/data/qdrant ghcr.io/YOUR_USER/edge-brain:latest
+docker pull ghcr.io/YOUR_USER/voxedge:latest
+docker run -d -p 8080:8080 -v edge-data:/data/qdrant ghcr.io/YOUR_USER/voxedge:latest
 ```
 
 **Transfer image file (air-gapped):**
 ```bash
 # On build machine:
-docker save edge-brain | gzip > edge-brain.tar.gz
+docker save voxedge | gzip > voxedge.tar.gz
 # Transfer to Pi via USB stick or scp, then:
-docker load < edge-brain.tar.gz
-docker run -d -p 8080:8080 -v edge-data:/data/qdrant edge-brain
+docker load < voxedge.tar.gz
+docker run -d -p 8080:8080 -v edge-data:/data/qdrant voxedge
 ```
 
 **Hardware notes:**
@@ -554,9 +554,9 @@ Key indicators:
 
 ```bash
 # Docker: remove the volume
-docker stop edge-brain && docker rm edge-brain
-docker volume rm edge-brain-data
-docker run -d --name edge-brain -p 8080:8080 -v edge-brain-data:/data/qdrant edge-brain
+docker stop voxedge && docker rm voxedge
+docker volume rm voxedge-data
+docker run -d --name voxedge -p 8080:8080 -v voxedge-data:/data/qdrant voxedge
 
 # Local: delete the qdrant directory
 rm -rf data/qdrant
@@ -568,10 +568,10 @@ By default, the API has no authentication (suitable for local kiosks and air-gap
 
 ```bash
 # Docker
-docker run -d -p 8080:8080 -e EDGE_API_KEY=your-secret-key edge-brain
+docker run -d -p 8080:8080 -e EDGE_API_KEY=your-secret-key voxedge
 
 # Fly.io: set as a secret
-fly secrets set EDGE_API_KEY=your-secret-key -a edge-rag-brain
+fly secrets set EDGE_API_KEY=your-secret-key -a voxedge
 ```
 
 All requests (except `/health`) must include the key:
@@ -596,10 +596,10 @@ curl -fsSL https://ngrok-agent.s3.amazonaws.com/ngrok-v3-stable-linux-arm64.tgz 
 
 ```bash
 # Backup
-docker cp edge-brain:/data/qdrant ./qdrant-backup
+docker cp voxedge:/data/qdrant ./qdrant-backup
 
 # Restore
-docker run -d --name edge-brain-new -p 8080:8080 -v $(pwd)/qdrant-backup:/data/qdrant edge-brain
+docker run -d --name voxedge-new -p 8080:8080 -v $(pwd)/qdrant-backup:/data/qdrant voxedge
 ```
 
 ## Retrieval Quality Guide

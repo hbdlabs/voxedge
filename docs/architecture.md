@@ -1,4 +1,4 @@
-# Edge RAG Brain - Technical Architecture
+# VoxEdge - Technical Architecture
 
 ## Overview
 

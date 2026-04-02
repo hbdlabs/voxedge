@@ -1,4 +1,4 @@
-app = 'edge-rag-brain'
+app = 'voxedge'
 primary_region = 'arn'
 
 [build]
@@ -17,7 +17,7 @@ primary_region = 'arn'
   min_machines_running = 1
 
 [mounts]
-  source = 'edge_brain_data'
+  source = 'voxedge_data'
   destination = '/persist'
 
 [[vm]]
