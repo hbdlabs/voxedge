@@ -8,6 +8,8 @@ It is built for places where there is no reliable internet: rural health posts, 
 
 The system uses RAG (Retrieval-Augmented Generation), which means it does not just generate text from a language model -- it first searches the loaded documents for relevant passages, then generates an answer based only on what it found. This keeps answers factual and traceable to source documents.
 
+It can also run in chat-only mode for translation and conversation without document retrieval.
+
 ### How it works
 
 1. **You load documents** (PDF, text, Word) into the system -- either baked into the container image or uploaded via API at runtime.
@@ -19,8 +21,9 @@ The system uses RAG (Retrieval-Augmented Generation), which means it does not ju
 
 - **Fully offline** -- runs on a Raspberry Pi, laptop, or kiosk with no internet
 - **Multilingual** -- questions and documents can be in different languages (50+ supported for retrieval, 70+ for generation). Ask in Vietnamese, get answers from English documents.
-- **Self-contained** -- single Docker container, ~3.2 GB, includes the language model, embedding model, reranker, vector database, document parser, and API server
+- **Self-contained** -- single Docker container, includes the language model, embedding model, reranker, vector database, document parser, and API server
 - **Grounded** -- answers cite their sources and the system refuses to answer when it has no relevant information
+- **Two modes** -- full RAG mode for document Q&A, or lightweight chat mode for just translation and conversation
 
 ### Stack
 
@@ -31,15 +34,17 @@ The system uses RAG (Retrieval-Augmented Generation), which means it does not ju
 | Vector storage | Qdrant Edge | Store and search vectors locally on disk |
 | Reranking | FastEmbed Cross-Encoder (ONNX) | Precision-filter retrieved chunks |
 | Generation | llama-cpp-python + Tiny Aya 3.35B (GGUF) | Generate multilingual answers on CPU |
-| API | FastAPI | HTTP endpoints for query, ingest, chat, translate, health, corpus |
+| API | FastAPI | HTTP endpoints for query, ingest, chat, translate, info, health |
 
 For detailed component descriptions and data flow diagrams, see [docs/architecture.md](docs/architecture.md).
+
+Sample documents for testing are in `examples/corpus/`.
 
 ## Requirements
 
 - Python 3.11+
-- Bun (for LiteParse document parsing)
-- ~4 GB RAM minimum
+- Bun (for LiteParse document parsing, not needed in chat mode)
+- ~4 GB RAM minimum (full mode), ~2.5 GB (chat mode)
 - ~4 GB disk (model weights + vector storage)
 
 ## Local Development Setup
@@ -47,7 +52,7 @@ For detailed component descriptions and data flow diagrams, see [docs/architectu
 ### 1. Create virtual environment
 
 ```bash
-/opt/homebrew/bin/python3.11 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
 ```
 
@@ -67,7 +72,7 @@ llama-cpp-python builds from source and requires `cmake` and a C++ compiler. On 
 curl -fsSL https://bun.sh/install | bash
 ```
 
-Bun is needed for LiteParse (PDF/DOCX parsing). If you only use `.txt` and `.md` files, Bun is not required.
+Bun is needed for LiteParse (PDF/DOCX parsing). If you only use `.txt` and `.md` files or run in chat mode, Bun is not required.
 
 ### 4. Download the GGUF model
 
@@ -90,52 +95,71 @@ Unit and integration tests run without the GGUF model (they mock the generator).
 ### 6. Start the server
 
 ```bash
+# Full mode (RAG + chat + translate)
 EDGE_MODEL_PATH=~/models/tiny-aya-global-q4_k_m.gguf \
 EDGE_CORPUS_DIR=./data/corpus \
 EDGE_QDRANT_DIR=./data/qdrant \
 uvicorn src.main:app --host 127.0.0.1 --port 8080
+
+# Chat mode (chat + translate only)
+EDGE_MODE=chat \
+EDGE_MODEL_PATH=~/models/tiny-aya-global-q4_k_m.gguf \
+uvicorn src.main:app --host 127.0.0.1 --port 8080
 ```
 
-Startup takes 15-30 seconds (loading embedding model, LLM, reranker, and indexing any baked-in corpus).
+Startup takes 15-30 seconds in full mode (loading all models + indexing corpus), 5-10 seconds in chat mode (loading LLM only).
 
 ## Docker Deployment
 
 ### Build
 
 ```bash
-# Place documents in data/corpus/ before building
+# Optionally place documents in data/corpus/ before building
 cp your_documents/*.pdf data/corpus/
-cp your_documents/*.txt data/corpus/
 
 # Build the image (~10 min first time, downloads 2.1 GB model)
 docker build -t edge-brain .
 ```
 
-The image is ~3.2 GB. The GGUF model is downloaded during build and baked into the image.
-
 ### Run
 
 ```bash
+# Full mode
 docker run -d \
   --name edge-brain \
   -p 8080:8080 \
   -v edge-brain-data:/data/qdrant \
   edge-brain
+
+# Chat mode
+docker run -d \
+  --name edge-brain \
+  -p 8080:8080 \
+  -e EDGE_MODE=chat \
+  edge-brain
 ```
 
-The volume mount (`-v edge-brain-data:/data/qdrant`) persists the vector index across container restarts. Without it, the baked-in corpus is re-indexed on every cold start.
+The volume mount (`-v edge-brain-data:/data/qdrant`) persists the vector index across container restarts. Not needed in chat mode.
 
 ### Verify
 
 ```bash
-# Wait ~30 seconds for startup, then:
 curl http://localhost:8080/health
 ```
 
-Expected response:
-```json
-{"status": "ok", "model_loaded": true, "corpus_chunks": 15, "uptime_seconds": 45}
+## Fly.io Deployment
+
+Two fly configs are provided:
+
+```bash
+# Full mode (performance 4-core, 8 GB, persistent volume)
+fly deploy --config fly.full.toml --remote-only
+
+# Chat mode (performance 2-core, 8 GB, no volume)
+fly deploy --config fly.chat.toml --remote-only
 ```
+
+Performance CPUs are required -- shared CPUs cannot run the 3.35B LLM within HTTP timeouts.
 
 ## Kubernetes Deployment
 
@@ -209,357 +233,247 @@ Set `initialDelaySeconds: 60` on probes to allow time for model loading and corp
 
 ## Raspberry Pi Deployment
 
-The Docker image is built for `arm64`, which is compatible with Raspberry Pi 4/5 (64-bit OS).
+The Docker image is built for `arm64`, compatible with Raspberry Pi 4/5 (64-bit OS).
 
-### Option A: Pull from registry
-
+**Pull from registry:**
 ```bash
-# On your build machine: push to GitHub Container Registry
-docker tag edge-brain ghcr.io/YOUR_USER/edge-brain:latest
-docker push ghcr.io/YOUR_USER/edge-brain:latest
-
-# On the Pi:
-curl -fsSL https://get.docker.com | sh
 docker pull ghcr.io/YOUR_USER/edge-brain:latest
 docker run -d -p 8080:8080 -v edge-data:/data/qdrant ghcr.io/YOUR_USER/edge-brain:latest
 ```
 
-### Option B: Transfer image file (air-gapped)
-
+**Transfer image file (air-gapped):**
 ```bash
-# On your build machine:
+# On build machine:
 docker save edge-brain | gzip > edge-brain.tar.gz
-# Transfer edge-brain.tar.gz to Pi via USB stick, scp, etc.
-
-# On the Pi:
+# Transfer to Pi, then:
 docker load < edge-brain.tar.gz
 docker run -d -p 8080:8080 -v edge-data:/data/qdrant edge-brain
 ```
 
-### Option C: Build on Pi
-
-```bash
-git clone https://github.com/YOUR_USER/ll-edge-brain.git
-cd ll-edge-brain
-docker build -t edge-brain .
-docker run -d -p 8080:8080 -v edge-data:/data/qdrant edge-brain
-```
-
-Building on Pi is slower (llama-cpp-python compiles from source). Expect 20-30 minutes.
-
-### Hardware notes
-
-- **Raspberry Pi 5 (8 GB)**: runs well. Queries take 5-15 seconds depending on answer length.
-- **Raspberry Pi 4 (4 GB)**: functional but tight on RAM. Use swap if needed (`sudo dphys-swapfile swapoff && sudo sed -i 's/CONF_SWAPSIZE=.*/CONF_SWAPSIZE=2048/' /etc/dphys-swapfile && sudo dphys-swapfile setup && sudo dphys-swapfile swapon`).
-- **Raspberry Pi 4 (2 GB)**: not recommended. Model loading will likely fail.
+**Hardware notes:**
+- Raspberry Pi 5 (8 GB): runs well, queries take 5-15 seconds
+- Raspberry Pi 4 (4 GB): functional but tight on RAM, use swap
+- Raspberry Pi 4 (2 GB): not recommended
 
 ## API Reference
 
 ### POST /query
 
-Ask a question. Returns a grounded answer with source references.
+Ask a question. Returns a grounded answer with source references. Only available in full mode.
 
-**Request:**
 ```bash
 curl -X POST http://localhost:8080/query \
   -H "Content-Type: application/json" \
   -d '{"question": "How do I prevent malaria?"}'
 ```
 
-**Response:**
 ```json
 {
   "answer": "Prevention includes sleeping under insecticide-treated bed nets, using mosquito repellent, and taking antimalarial medication.",
-  "sources": [
-    {"file": "health_basics.txt", "chunk": 0, "score": 4.9559}
-  ],
+  "sources": [{"file": "health_basics.txt", "chunk": 0, "score": 7.4985}],
   "language": "en"
 }
 ```
 
-The `score` is the cross-encoder reranker score (higher is more relevant). The `language` is auto-detected from the question.
+Questions can be asked in any supported language. The system retrieves relevant chunks regardless of the document's language and generates an answer in the question's language.
 
-Questions can be asked in any supported language. The system retrieves relevant chunks regardless of the document's language and generates an answer in the question's language:
-
-```bash
-# Norwegian question on English documents
-curl -X POST http://localhost:8080/query \
-  -H "Content-Type: application/json" \
-  -d '{"question": "Hvordan kan jeg beskytte barnet mitt mot sykdommer?"}'
-
-# Vietnamese question on Norwegian documents
-curl -X POST http://localhost:8080/query \
-  -H "Content-Type: application/json" \
-  -d '{"question": "Toi duoc nghi phep bao nhieu ngay?"}'
-```
-
-If no relevant context is found, the response is:
+If no relevant context is found:
 ```json
-{
-  "answer": "I don't have information about that.",
-  "sources": [],
-  "language": "en"
-}
+{"answer": "I don't have information about that.", "sources": [], "language": "en"}
 ```
 
 ### POST /ingest
 
-Upload documents to index at runtime.
+Upload documents to index at runtime. Only available in full mode.
 
-**Request:**
 ```bash
-# Single file
-curl -X POST http://localhost:8080/ingest \
-  -F "files=@document.pdf"
-
-# Multiple files
 curl -X POST http://localhost:8080/ingest \
   -F "files=@guide.pdf" \
-  -F "files=@manual.txt" \
-  -F "files=@policy.docx"
+  -F "files=@manual.txt"
 ```
 
-**Response:**
-```json
-{
-  "ingested": [
-    {"file": "guide.pdf", "chunks": 42, "language": "en"},
-    {"file": "manual.txt", "chunks": 8, "language": "no"},
-    {"file": "policy.docx", "chunks": 15, "language": "es"}
-  ]
-}
-```
+Supported formats: `.txt`, `.md`, `.pdf`, `.docx`, `.doc`, `.pptx`, `.xlsx`.
 
-Supported formats: `.txt`, `.md`, `.pdf`, `.docx`, `.doc`, `.pptx`, `.xlsx`. PDF and Office formats require Bun and LiteParse.
-
-Re-ingesting the same file overwrites existing chunks (deterministic IDs based on filename + chunk index).
+Re-ingesting the same file overwrites existing chunks.
 
 ### POST /chat
 
-Direct chat with the language model, no RAG retrieval. Useful for general questions, explanations, or conversation. Optional system prompt to set the tone or language.
+Direct chat with the language model, no RAG retrieval. Available in both modes.
 
-**Request:**
 ```bash
 curl -X POST http://localhost:8080/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "Hva betyr feriepenger?", "system": "Svar kort på norsk."}'
 ```
 
-**Response:**
-```json
-{
-  "response": "Feriepenger er en type lønn som ansatte får under sin ferie..."
-}
-```
-
-The `system` field is optional. Without it, the model responds in whatever language the message is in.
+The `system` field is optional.
 
 ### POST /translate
 
-Translate text between languages. Configurable via `EDGE_LOCAL_LANGUAGE` (default: Norwegian).
+Translate text between languages. Available in both modes.
 
-**Auto-detect direction** — if no source/target specified, English input translates to the local language and non-English input translates to English:
+Auto-detects direction based on `EDGE_LOCAL_LANGUAGE` (default: Norwegian). English input translates to the local language, non-English input translates to English.
 
 ```bash
-# English → Norwegian (auto)
+# Auto direction
 curl -X POST http://localhost:8080/translate \
   -H "Content-Type: application/json" \
   -d '{"text": "The vaccine is free at all health centers."}'
 
-# Norwegian → English (auto)
+# Explicit
 curl -X POST http://localhost:8080/translate \
   -H "Content-Type: application/json" \
-  -d '{"text": "Alle ansatte har rett på 5 uker ferie hvert år."}'
+  -d '{"text": "Xin chào", "source": "Vietnamese", "target": "Norwegian"}'
 ```
 
-**Explicit source and target:**
+### GET /info
+
+System information: loaded models, configuration, vector store stats, and indexed documents.
 
 ```bash
-# Vietnamese → Norwegian
-curl -X POST http://localhost:8080/translate \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Xin chào, tôi cần giúp đỡ.", "source": "Vietnamese", "target": "Norwegian"}'
-
-# Spanish → English
-curl -X POST http://localhost:8080/translate \
-  -H "Content-Type: application/json" \
-  -d '{"text": "La vacuna es gratuita.", "source": "Spanish", "target": "English"}'
+curl http://localhost:8080/info
 ```
 
-**Response:**
+In full mode:
 ```json
 {
-  "translation": "Legen anbefaler at du tar denne medisinen to ganger i døgnet med mat.",
-  "source": "English",
-  "target": "Norwegian"
+  "mode": "full",
+  "models": {
+    "llm": "/data/models/tiny-aya-global-q4_k_m.gguf",
+    "llm_context": 4096,
+    "llm_threads": 4,
+    "embedding": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    "reranker": "jinaai/jina-reranker-v2-base-multilingual"
+  },
+  "config": {
+    "local_language": "Norwegian",
+    "max_tokens": 100,
+    "chunk_size": 250,
+    "chunk_overlap": 30,
+    "top_k": 5,
+    "score_threshold": 0.3
+  },
+  "store": {
+    "segments": 1,
+    "points": 78,
+    "indexed_vectors": 78,
+    "vector_size": 384
+  },
+  "documents": [
+    {"source_file": "Ferie.pdf", "chunks": 65, "language": "no", "ingested_at": "..."}
+  ]
 }
 ```
 
-To change the default local language:
-```bash
-EDGE_LOCAL_LANGUAGE=Vietnamese  # or Spanish, French, etc.
-```
+In chat mode, the store, documents, and RAG config fields are omitted.
 
 ### GET /health
 
-**Response:**
 ```json
-{
-  "status": "ok",
-  "model_loaded": true,
-  "corpus_chunks": 78,
-  "uptime_seconds": 3600
-}
+{"status": "ok", "mode": "full", "model_loaded": true, "corpus_chunks": 78, "uptime_seconds": 3600}
 ```
 
 ### GET /corpus
 
-List all indexed documents.
-
-**Response:**
-```json
-{
-  "documents": [
-    {"source_file": "health_basics.txt", "chunks": 5, "language": "en", "ingested_at": "2026-04-01T22:23:59Z"},
-    {"source_file": "Ferie.pdf", "chunks": 65, "language": "no", "ingested_at": "2026-04-01T23:25:58Z"}
-  ],
-  "total_chunks": 70
-}
-```
+List all indexed documents. Only available in full mode.
 
 ### DELETE /corpus/{filename}
 
-Remove a document and all its vectors from the index.
+Remove a document and all its vectors from the index. Only available in full mode.
 
 ```bash
 curl -X DELETE http://localhost:8080/corpus/Ferie.pdf
 ```
 
-**Response:**
-```json
-{
-  "deleted": "Ferie.pdf",
-  "chunks_removed": 65,
-  "total_chunks": 5
-}
-```
-
-The document is removed from search results immediately. If the file was baked into the Docker image at `data/corpus/`, it will be re-indexed on next restart. Runtime-uploaded documents are gone permanently.
-
 ## Configuration
 
 All settings are configurable via environment variables with the `EDGE_` prefix:
 
-```bash
-# Override any default
-EDGE_MODE=full                # "full" = RAG + chat + translate, "chat" = chat + translate only
-EDGE_MODEL_PATH=~/models/tiny-aya-global-q4_k_m.gguf  # GGUF model location
-EDGE_RERANKER_MODEL=jinaai/jina-reranker-v2-base-multilingual  # reranker model
-EDGE_CHUNK_SIZE=300          # smaller chunks for more precise retrieval
-EDGE_CHUNK_OVERLAP=30        # overlap between chunks
-EDGE_TOP_K=5                 # number of chunks passed to LLM
-EDGE_SCORE_THRESHOLD=0.4     # minimum similarity for retrieval
-EDGE_MAX_TOKENS=150          # max generation length
-EDGE_N_THREADS=8             # CPU threads for LLM (match your core count)
-EDGE_N_CTX=2048              # LLM context window (lower = less RAM)
-```
+| Setting | Default | Purpose |
+|---|---|---|
+| `EDGE_MODE` | `full` | `full` = RAG + chat + translate, `chat` = chat + translate only |
+| `EDGE_MODEL_PATH` | `/data/models/tiny-aya-global-q4_k_m.gguf` | GGUF model location |
+| `EDGE_EMBEDDING_MODEL` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | Embedding model |
+| `EDGE_RERANKER_MODEL` | `jinaai/jina-reranker-v2-base-multilingual` | Reranker model |
+| `EDGE_LOCAL_LANGUAGE` | `Norwegian` | Default language for auto-translate direction |
+| `EDGE_CHUNK_SIZE` | `250` | Characters per chunk |
+| `EDGE_CHUNK_OVERLAP` | `30` | Overlap between chunks |
+| `EDGE_TOP_K` | `5` | Chunks passed to LLM after reranking |
+| `EDGE_SCORE_THRESHOLD` | `0.3` | Minimum similarity for initial retrieval |
+| `EDGE_MAX_TOKENS` | `100` | Max generation tokens for query/chat |
+| `EDGE_N_THREADS` | `4` | CPU threads for LLM |
+| `EDGE_N_CTX` | `4096` | LLM context window |
+| `EDGE_CORPUS_DIR` | `/data/corpus` | Baked-in documents directory |
+| `EDGE_QDRANT_DIR` | `/data/qdrant` | Vector storage path |
 
 ### Deployment modes
 
-The system supports two modes via `EDGE_MODE`:
+**Full mode** (`EDGE_MODE=full`, default) — loads all components. All endpoints available.
 
-**Full mode** (`EDGE_MODE=full`, default) — loads all components: embedder, vector store, reranker, and LLM. All endpoints available: `/query`, `/ingest`, `/corpus`, `/chat`, `/translate`, `/health`.
-
-**Chat mode** (`EDGE_MODE=chat`) — loads only the LLM. Available endpoints: `/chat`, `/translate`, `/health`. The RAG endpoints (`/query`, `/ingest`, `/corpus`) return 404.
-
-Chat mode is useful when you only need translation and conversation, without document retrieval. It starts faster and uses less RAM (~2.5 GB vs 4+ GB) since no embedder, reranker, or vector store is loaded.
-
-```bash
-# Chat-only deployment
-EDGE_MODE=chat \
-EDGE_MODEL_PATH=~/models/tiny-aya-global-q4_k_m.gguf \
-uvicorn src.main:app --host 0.0.0.0 --port 8080
-```
+**Chat mode** (`EDGE_MODE=chat`) — loads only the LLM. Only `/chat`, `/translate`, `/info`, `/health` available. Faster startup, less RAM.
 
 ### Choosing a reranker
-
-The reranker is the precision filter between vector search and the LLM. Pick based on your corpus language:
-
-```bash
-# English-only corpus (default for lightweight deployments)
-EDGE_RERANKER_MODEL=Xenova/ms-marco-MiniLM-L-6-v2
-
-# Non-English or mixed-language corpus (default)
-EDGE_RERANKER_MODEL=jinaai/jina-reranker-v2-base-multilingual
-```
 
 | Model | Size | Speed | Best for |
 |---|---|---|---|
 | `Xenova/ms-marco-MiniLM-L-6-v2` | 80 MB | ~5ms/chunk | English-only corpus |
 | `jinaai/jina-reranker-v2-base-multilingual` | 1.1 GB | ~50ms/chunk | Non-English or mixed corpus |
 
-The multilingual reranker is the default because the system is designed for multilingual use. If you deploy with English-only content and want a smaller footprint, switch to the English model.
-
-The English reranker struggles with non-English content — it may score the wrong chunk higher when multiple similar chunks compete in a non-English document. This leads to correct retrieval (right document found) but wrong answers (wrong chunk selected from that document).
+The English reranker struggles with non-English content — it may score the wrong chunk higher when multiple similar chunks compete in a non-English document.
 
 ### Tuning guidelines
 
-**EDGE_CHUNK_SIZE**: Smaller chunks (200-300) give more precise retrieval but may split important context across chunks. Larger chunks (500-800) preserve more context per chunk but may dilute relevance.
+**EDGE_CHUNK_SIZE**: Smaller chunks (200-300) give more precise retrieval but may split context. Larger chunks (500-800) preserve more context but dilute relevance.
 
-**EDGE_TOP_K**: More chunks give the LLM more context to work with but increase generation time and the chance of irrelevant information leaking in. 5 is the default. Reduce to 3 if answers are unfocused, increase to 7 if the right information keeps getting excluded.
+**EDGE_TOP_K**: More chunks = more context for the LLM but also more noise. 5 is a good default.
 
-**EDGE_SCORE_THRESHOLD**: This is the initial retrieval threshold before reranking. Lower values (0.2-0.3) cast a wider net, relying on the reranker to filter. Higher values (0.5+) are stricter but may miss relevant chunks.
+**EDGE_SCORE_THRESHOLD**: Lower values (0.2) cast a wider net. Higher values (0.5) are stricter but may miss chunks.
 
-**EDGE_MAX_TOKENS**: Controls answer length. 100 tokens produces 1-3 sentence answers. Increase for questions that need longer explanations.
+**EDGE_MAX_TOKENS**: 100 tokens produces 1-3 sentence answers. Increase for longer explanations.
 
-**EDGE_N_THREADS**: Set to your CPU core count. More threads speed up LLM generation but increase CPU load.
-
-**EDGE_N_CTX**: The LLM context window. 4096 is sufficient for most queries. Lowering to 2048 reduces RAM usage by ~200 MB.
+**EDGE_N_THREADS**: Match your CPU core count.
 
 ## Operations
 
-### Adding documents to the corpus
+### Managing the corpus
 
-**At build time (baked-in):** Place files in `data/corpus/` before building the Docker image. These are indexed automatically on first startup.
+```bash
+# Add documents
+curl -X POST http://localhost:8080/ingest -F "files=@new_guide.pdf"
 
-**At runtime:** Use the `/ingest` endpoint to upload files. These are indexed immediately and available for queries.
+# List indexed documents
+curl http://localhost:8080/corpus
 
-**Persistence:** Runtime-ingested documents are stored in the Qdrant Edge shard at `/data/qdrant/`. If this directory is a volume mount, documents survive container restarts. Without a volume mount, only baked-in corpus documents are available after restart (they are re-indexed automatically).
+# Remove a document
+curl -X DELETE http://localhost:8080/corpus/new_guide.pdf
+
+# Replace a document (re-ingesting same filename overwrites)
+curl -X POST http://localhost:8080/ingest -F "files=@updated_guide.pdf"
+
+# Full system info with store stats
+curl http://localhost:8080/info
+```
+
+No restart needed. Changes take effect immediately.
 
 ### Monitoring
 
-Use the `/health` endpoint for liveness and readiness checks:
-
 ```bash
-# Basic check
+# Health check
 curl http://localhost:8080/health
 
-# Watch corpus growth
+# Full system status
+curl http://localhost:8080/info
+
+# Watch corpus
 watch -n 10 'curl -s http://localhost:8080/corpus | python3 -m json.tool'
 ```
 
 Key indicators:
-- `model_loaded: false` -- the LLM failed to load. Check logs for memory issues.
-- `corpus_chunks: 0` -- no documents indexed. Check `EDGE_CORPUS_DIR` path and file formats.
-
-### Logs
-
-```bash
-# Docker
-docker logs edge-brain
-
-# Docker follow
-docker logs -f edge-brain
-
-# Kubernetes
-kubectl logs deployment/edge-rag-kiosk
-```
-
-Startup logs show model loading progress and any ingestion errors. Runtime logs show HTTP requests via uvicorn.
+- `model_loaded: false` — the LLM failed to load. Check logs for memory issues.
+- `corpus_chunks: 0` — no documents indexed. Check `EDGE_CORPUS_DIR` path and file formats.
 
 ### Clearing the index
-
-To re-index all documents from scratch:
 
 ```bash
 # Docker: remove the volume
@@ -567,162 +481,76 @@ docker stop edge-brain && docker rm edge-brain
 docker volume rm edge-brain-data
 docker run -d --name edge-brain -p 8080:8080 -v edge-brain-data:/data/qdrant edge-brain
 
-# Local development: delete the qdrant directory
+# Local: delete the qdrant directory
 rm -rf data/qdrant
 ```
 
-On next startup, all baked-in corpus files will be re-indexed.
-
 ### Remote access with ngrok
 
-To expose the brain to the internet from a local device or Pi:
-
 ```bash
-# Install ngrok
 curl -fsSL https://ngrok-agent.s3.amazonaws.com/ngrok-v3-stable-linux-arm64.tgz | tar xz
-
-# Expose port 8080
 ./ngrok http 8080
 ```
 
-This gives a public URL (e.g., `https://abc123.ngrok.io`) that forwards to your local brain. Use it to query from anywhere:
-
-```bash
-curl https://abc123.ngrok.io/query \
-  -H "Content-Type: application/json" \
-  -d '{"question": "What vaccines do children need?"}'
-```
-
-### Managing the corpus
-
-**Add documents:**
-```bash
-curl -X POST http://localhost:8080/ingest -F "files=@new_guide.pdf"
-```
-
-**List indexed documents:**
-```bash
-curl http://localhost:8080/corpus
-```
-
-**Remove a document:**
-```bash
-curl -X DELETE http://localhost:8080/corpus/new_guide.pdf
-```
-
-**Replace a document** (re-ingesting the same filename overwrites existing chunks):
-```bash
-curl -X POST http://localhost:8080/ingest -F "files=@updated_guide.pdf"
-```
-
-No restart needed for any of these operations. Changes take effect immediately.
-
-To change the baked-in corpus (documents that auto-index on startup), update the files in `data/corpus/` and rebuild the Docker image.
-
 ### Backup and restore
 
-The vector index is stored in `/data/qdrant/`. To back up:
-
 ```bash
-# Docker
+# Backup
 docker cp edge-brain:/data/qdrant ./qdrant-backup
 
-# Restore to a new container
+# Restore
 docker run -d --name edge-brain-new -p 8080:8080 -v $(pwd)/qdrant-backup:/data/qdrant edge-brain
 ```
 
 ## Retrieval Quality Guide
 
-The quality of answers depends entirely on how well the system retrieves the right chunks from your documents. Understanding your source material and how it gets processed is key to getting good results.
+The quality of answers depends on how well the system retrieves the right chunks from your documents.
 
 ### How LiteParse handles documents
 
-LiteParse's approach to document parsing is to preserve spatial structure rather than convert it away. Instead of transforming a PDF into markdown or HTML (which loses layout information), LiteParse extracts text with its original positioning — each text item comes with x/y coordinates, font size, and a confidence score. This means the physical structure of the document (headings, columns, tables, margins) is retained as data, not interpreted and flattened.
+LiteParse preserves spatial structure rather than converting it away. Instead of transforming a PDF into markdown (which loses layout information), LiteParse extracts text with its original positioning — each text item comes with x/y coordinates, font size, and a confidence score.
 
-We use this spatial data in `parser.py` to reconstruct clean text. The parser groups text items into lines by Y position, identifies garbled regions (OCR artifacts from screenshots, tiny mixed font sizes) and filters them out, and strips headers and footers by their position on the page. The result is cleaner text than a naive `--format text` extraction, because the spatial information tells us which parts of the page are real content and which are noise.
-
-You can inspect the raw spatial output to understand what LiteParse sees:
+We use this spatial data in `parser.py` to reconstruct clean text. The parser groups text items into lines by Y position, identifies garbled regions (OCR artifacts from screenshots, tiny mixed font sizes) and filters them out, and strips headers and footers by their position on the page.
 
 ```bash
-# Spatial JSON with bounding boxes
+# Inspect spatial output
 bunx @llamaindex/liteparse parse your_document.pdf --format json | python3 -m json.tool
 
-# Plain text (what the default text mode produces, before our spatial filtering)
+# Compare with plain text extraction
 bunx @llamaindex/liteparse parse your_document.pdf --format text
 ```
 
 ### Know your documents
 
-Before ingesting, review what LiteParse extracts from your documents:
+Before ingesting, review what gets extracted:
 
-```bash
-# See what text gets extracted from a PDF
-bunx @llamaindex/liteparse parse your_document.pdf --format text
-```
-
-Check for:
 - **Garbled text from screenshots or tables** — the spatial parser filters most of this, but complex layouts may still produce noise
-- **Important facts buried in tables** — tabular data often extracts poorly. If critical information lives in tables, consider adding a plain text summary document alongside the PDF
-- **Contradictory information** — if the same topic (e.g., phone budget) appears in multiple places with different numbers, the model may pick the wrong one
-- **Information split across pages** — a sentence that starts at the bottom of one page and continues at the top of the next may get split into different chunks
+- **Important facts buried in tables** — consider adding a plain text summary alongside the PDF
+- **Contradictory information** — if the same topic appears with different numbers, the model may pick the wrong one
+- **Information split across pages** — may get split into different chunks
 
-### Check how documents get chunked
+### How retrieval can fail
 
-The chunker splits text into 250-character overlapping windows. Short facts that land at chunk boundaries may end up in a chunk where they're surrounded by unrelated content:
+**1. Embedding search** — the question and relevant chunk use very different vocabulary. Diagnosis: system says "I don't have information" for a question you know is covered.
 
-```bash
-# Preview how a document gets chunked
-python -c "
-from src.parser import parse_file
-from src.chunker import chunk_text
-from pathlib import Path
+**2. Cross-encoder reranking** — a related but wrong chunk scores higher than the correct one. Diagnosis: wrong answer but correct source file.
 
-text = parse_file(Path('your_document.pdf'))
-chunks = chunk_text(text, chunk_size=250, overlap=30)
-for i, chunk in enumerate(chunks):
-    print(f'--- Chunk {i} ---')
-    print(chunk)
-    print()
-"
-```
-
-If important facts end up buried at the end of a chunk with unrelated content at the start, the reranker may not score that chunk highly enough.
-
-### How retrieval works and where it can fail
-
-The query pipeline has three stages, each with its own failure mode:
-
-**1. Embedding search** (retrieve 20 candidates, threshold >= 0.3)
-- Failure mode: the question and the relevant chunk use very different vocabulary. The multilingual embedding model handles synonyms and cross-lingual matching well, but highly domain-specific terminology may not match.
-- Diagnosis: if the answer exists in your corpus but the system says "I don't have information about that", the embedding search didn't find it above the threshold.
-
-**2. Cross-encoder reranking** (pick best 5 from the 20 candidates)
-- Failure mode: a chunk about a related but wrong topic scores higher than the chunk with the correct answer. For example, a question about "PC budget" may match a chunk about "phone budget" because both discuss equipment pricing.
-- Diagnosis: the answer is wrong but the source file is correct — the reranker picked a plausible but wrong chunk from the right document.
-
-**3. LLM generation** (generate answer from the 5 chunks)
-- Failure mode: the right chunks are retrieved but the 3B model misinterprets, conflates numbers, or picks the wrong fact from the context.
-- Diagnosis: the source file and chunk are correct, but the answer contains a wrong number or mixes up details.
+**3. LLM generation** — right chunks retrieved but the 3B model misinterprets or conflates facts. Diagnosis: correct source and chunk, wrong answer.
 
 ### Improving retrieval
 
-**Phrasing matters.** Questions that use the same vocabulary as the source documents get better results. "Hvor mange dager kan jeg bruke egenmelding?" works better than "Hvor mange egenmeldingsdager har jeg?" if the document says "bruke egenmelding".
-
-**Add plain text summaries.** If a PDF has important information locked in tables, screenshots, or complex layouts, add a companion `.txt` file that restates the key facts in clean prose. This gives the system clean, chunkable text to work with.
-
-**Adjust chunk size.** The default 250 characters works well for documents with short, factual paragraphs. For documents with longer narrative sections, increasing `EDGE_CHUNK_SIZE` to 400-500 may help keep related facts together. For documents with many short facts (price lists, policy rules), 200 or even 150 may be better.
-
-**Adjust score threshold.** If the system says "I don't have information" for questions you know are covered, lower `EDGE_SCORE_THRESHOLD` from 0.3 to 0.2. If it gives wrong answers from irrelevant chunks, raise it to 0.4.
-
-**Adjust top_k.** More chunks to the LLM (higher `EDGE_TOP_K`) means the correct chunk is more likely to be included, but also gives the model more noise to sort through. 5 is a good default. Reduce to 3 if answers are unfocused, increase to 7 if the right information keeps getting excluded.
-
-### Testing your corpus
-
-After ingesting documents, test with questions where you know the expected answer. Compare the system's answer and source references against the actual document content. This is the most reliable way to identify retrieval gaps and tune the configuration for your specific documents.
+- **Phrasing matters.** Questions using the same vocabulary as source documents get better results.
+- **Add plain text summaries** alongside PDFs with complex layouts.
+- **Adjust chunk size.** 200 for fact-dense documents, 400-500 for narrative text.
+- **Adjust score threshold.** Lower if too many misses, raise if too many wrong answers.
+- **Test with known answers.** Compare system output against actual document content.
 
 ## Licensing
 
-- **Tiny Aya Global**: CC-BY-NC (non-commercial). Commercial use requires contacting Cohere Sales.
+- **Tiny Aya Global** (CohereLabs): CC-BY-NC-4.0 (non-commercial)
+- **Jina Reranker v2** (Jina AI): CC-BY-NC-4.0 (non-commercial)
 - **FastEmbed models**: Apache 2.0
 - **Qdrant Edge**: Apache 2.0
 - **LiteParse**: MIT
+
+The code in this repository is MIT licensed. When deploying with the default models, the CC-BY-NC restriction applies to the overall system. See [LICENSE](LICENSE) for details.
