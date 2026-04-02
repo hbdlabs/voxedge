@@ -204,13 +204,13 @@ Two fly configs are provided. Performance CPUs are required — shared CPUs cann
 ```bash
 fly apps create voxedge
 fly volumes create voxedge_data --region arn --size 5
-fly deploy --config fly.full.toml --remote-only
+fly deploy --config deploy/fly/fly.full.toml --remote-only
 ```
 
 **Chat mode** (performance 2-core, 8 GB, no volume needed):
 ```bash
 fly apps create voxedge
-fly deploy --config fly.chat.toml --remote-only
+fly deploy --config deploy/fly/fly.chat.toml --remote-only
 ```
 
 First startup takes 3-5 minutes (downloading embedding and reranker models). Subsequent starts are faster if using a persistent volume with `HF_HOME` set (models are cached).
