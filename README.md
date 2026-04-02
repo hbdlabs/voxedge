@@ -8,8 +8,6 @@ It is built for places where there is no reliable internet: rural health posts, 
 
 The system uses RAG (Retrieval-Augmented Generation), which means it does not just generate text from a language model -- it first searches the loaded documents for relevant passages, then generates an answer based only on what it found. This keeps answers factual and traceable to source documents.
 
-It can also run in chat-only mode for translation and conversation without document retrieval.
-
 ### How it works
 
 1. **You load documents** (PDF, text, Word) into the system -- either baked into the container image or uploaded via API at runtime.
@@ -17,13 +15,31 @@ It can also run in chat-only mode for translation and conversation without docum
 3. **When someone asks a question**, the question is also converted to a vector, the most relevant chunks are retrieved, a cross-encoder reranker selects the best matches, and a local language model generates an answer using only those chunks as context.
 4. **The answer comes back with source references** so the user can verify where the information came from.
 
+### Modes
+
+The system runs in two modes:
+
+**Full mode** (default) -- document Q&A with retrieval, plus chat and translation. Loads the LLM, embedding model, vector store, and reranker. All endpoints available.
+
+**Chat mode** -- translation and conversation only, no document retrieval. Loads only the LLM. Faster startup, less RAM (~2.5 GB vs 4+ GB). Set `EDGE_MODE=chat`.
+
+### Reranker options
+
+The reranker is a precision filter that picks the best chunks from a larger set of candidates. Two models are available:
+
+**English reranker** (80 MB, default) -- `Xenova/ms-marco-MiniLM-L-6-v2`. Fast and lightweight. Works well when your documents are in English. This is the default because it keeps the footprint small and handles the most common use case.
+
+**Multilingual reranker** (1.1 GB) -- `jinaai/jina-reranker-v2-base-multilingual`. Switch to this when your documents are in non-English languages. The English reranker can pick the wrong chunk when multiple similar chunks compete in a non-English document. Set `EDGE_RERANKER_MODEL=jinaai/jina-reranker-v2-base-multilingual`.
+
+The embedding model and the LLM are multilingual regardless of which reranker you choose. The reranker is the only component where language matters for the choice.
+
 ### What makes it different
 
 - **Fully offline** -- runs on a Raspberry Pi, laptop, or kiosk with no internet
-- **Multilingual** -- questions and documents can be in different languages (50+ supported for retrieval, 70+ for generation). Ask in Vietnamese, get answers from English documents.
-- **Self-contained** -- single Docker container, includes the language model, embedding model, reranker, vector database, document parser, and API server
+- **Multilingual** -- questions and documents can be in different languages (50+ for retrieval, 70+ for generation). Ask in Vietnamese, get answers from English documents.
+- **Self-contained** -- single Docker container with all models, vector database, document parser, and API server
 - **Grounded** -- answers cite their sources and the system refuses to answer when it has no relevant information
-- **Two modes** -- full RAG mode for document Q&A, or lightweight chat mode for just translation and conversation
+- **Configurable** -- swap rerankers, adjust chunk size, tune retrieval thresholds, switch between full and chat mode
 
 ### Stack
 
