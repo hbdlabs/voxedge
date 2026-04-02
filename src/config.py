@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     corpus_dir: str = "/data/corpus"
     qdrant_dir: str = "/data/qdrant"
     max_tokens: int = 100
+    local_language: str = "Norwegian"
     host: str = "0.0.0.0"
     port: int = 8080
     n_ctx: int = 4096

@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI, UploadFile
 from pydantic import BaseModel
 
-from src.config import settings
+from src.config import detect_language, settings
 from src.embedder import Embedder
 from src.generator import Generator
 from src.ingest import ingest_file
@@ -17,6 +17,17 @@ from src.store import VectorStore
 
 class QueryRequest(BaseModel):
     question: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    system: str = ""
+
+
+class TranslateRequest(BaseModel):
+    text: str
+    source: str = ""
+    target: str = ""
 
 
 _start_time: float = 0.0
@@ -107,6 +118,37 @@ def create_app(
             "answer": result.answer,
             "sources": result.sources,
             "language": result.language,
+        }
+
+    @app.post("/chat")
+    def chat(req: ChatRequest):
+        response = app.state.generator.chat(
+            message=req.message,
+            system=req.system,
+            max_tokens=settings.max_tokens,
+        )
+        return {"response": response}
+
+    @app.post("/translate")
+    def translate(req: TranslateRequest):
+        local = settings.local_language
+        # Auto-detect: if text looks like English, translate to local. Otherwise to English.
+        if req.source:
+            source = req.source
+        else:
+            detected = detect_language(req.text)
+            source = "English" if detected == "en" else local
+        target = req.target or ("English" if source != "English" else local)
+        translation = app.state.generator.translate(
+            text=req.text,
+            source_lang=source,
+            target_lang=target,
+            max_tokens=settings.max_tokens * 3,
+        )
+        return {
+            "translation": translation,
+            "source": source,
+            "target": target,
         }
 
     @app.post("/ingest")

@@ -71,3 +71,38 @@ class Generator:
             stop=["\nQuestion:", "\n\n\n", "\nNote:", "(Note:", "\nAnswer:"],
         )
         return result["choices"][0]["text"].strip()
+
+    def chat(self, message: str, system: str = "", max_tokens: int = 200) -> str:
+        """Direct chat with the model, no RAG context."""
+        if system:
+            prompt = f"{system}\n\nUser: {message}\n\nAssistant:"
+        else:
+            prompt = f"User: {message}\n\nAssistant:"
+        result = self._llm.create_completion(
+            prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=0.3,
+            top_p=0.9,
+            repeat_penalty=1.3,
+            stop=["\nUser:", "\n\n\n"],
+        )
+        return result["choices"][0]["text"].strip()
+
+    def translate(
+        self, text: str, source_lang: str, target_lang: str, max_tokens: int = 200
+    ) -> str:
+        """Translate text between languages."""
+        prompt = (
+            f"Translate from {source_lang} to {target_lang}.\n\n"
+            f"{source_lang}: {text}\n\n"
+            f"{target_lang}:"
+        )
+        result = self._llm.create_completion(
+            prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=0.1,
+            top_p=0.9,
+            repeat_penalty=1.5,
+            stop=[f"\n{source_lang}:", "\n\n", f"\n{target_lang}:"],
+        )
+        return result["choices"][0]["text"].strip()
