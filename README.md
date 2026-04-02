@@ -292,7 +292,10 @@ curl -X POST http://localhost:8080/ingest \
   -F "files=@manual.txt"
 ```
 
-Supported formats: `.txt`, `.md`, `.pdf`, `.docx`, `.doc`, `.pptx`, `.xlsx`.
+**Supported formats:**
+- `.txt`, `.md` — read directly, best quality
+- `.pdf` — parsed by LiteParse with spatial layout reconstruction and built-in OCR (Tesseract). Text-based PDFs work well. Scanned PDFs depend on image quality.
+- `.docx`, `.doc`, `.pptx`, `.xlsx` — require LibreOffice installed (LiteParse converts to PDF first, then parses). Not included in the default Docker image. Add `apt-get install -y libreoffice` to the Dockerfile if you need these formats.
 
 Re-ingesting the same file overwrites existing chunks.
 
