@@ -17,7 +17,7 @@ This is made possible by a new generation of small but capable multilingual mode
 - **Community centers and libraries** -- a shared knowledge terminal where residents ask about government services, civic rights, or local information in their language
 - **Employee onboarding** -- new hires query company handbooks and policies in their preferred language
 
-The system uses RAG (Retrieval-Augmented Generation) -- it searches loaded documents for relevant passages, then generates an answer based only on what it found. This keeps answers factual and traceable to source documents.
+Adding content is straightforward: upload a PDF, Word doc, or text file via the API and it becomes searchable immediately. No retraining, no restart. Documents can be added, replaced, and removed while the system is running.
 
 ### How it works
 
