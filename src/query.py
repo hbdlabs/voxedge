@@ -43,6 +43,13 @@ def query_brain(
         for r in results
     ]
 
+    if not chunks:
+        return QueryResult(
+            answer="I don't have information about that.",
+            sources=[],
+            language=language,
+        )
+
     answer = generator.generate(
         chunks=chunks,
         question=question,

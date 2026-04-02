@@ -41,7 +41,6 @@ def test_query_no_results():
     mock_store.query.return_value = []
 
     mock_generator = MagicMock()
-    mock_generator.generate.return_value = "I don't have enough information to answer."
 
     result = query_brain(
         question="What is quantum physics?",
@@ -50,5 +49,6 @@ def test_query_no_results():
         generator=mock_generator,
     )
 
-    assert result.answer == "I don't have enough information to answer."
+    assert result.answer == "I don't have information about that."
     assert result.sources == []
+    mock_generator.generate.assert_not_called()

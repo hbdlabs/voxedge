@@ -11,7 +11,7 @@ def test_build_prompt():
     assert "Chunk 1 text." in prompt
     assert "Chunk 2 text." in prompt
     assert "What is this about?" in prompt
-    assert "Use ONLY the provided context" in prompt
+    assert "ONLY use information from the Context below" in prompt
 
 
 def test_build_prompt_empty_chunks():

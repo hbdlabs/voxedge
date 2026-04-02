@@ -17,9 +17,14 @@ jinja2.Environment.__init__ = _patched_env_init
 
 
 PROMPT_TEMPLATE = """You are a helpful assistant at a community knowledge kiosk.
-Use ONLY the provided context to answer the question.
-Answer in the same language as the question.
-If the context does not contain enough information to answer, say so honestly.
+
+Rules:
+- ONLY use information from the Context below
+- If the Context does not answer the question, reply ONLY with: "I don't have information about that."
+- Do NOT make up information
+- Do NOT add information from your own knowledge
+- Answer in the same language as the question
+- Keep your answer short and direct
 
 Context:
 {context}
