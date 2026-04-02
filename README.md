@@ -2,11 +2,22 @@
 
 ## What is this
 
-A knowledge kiosk in a box. Load it with documents -- health guides, farming manuals, government policies, employee handbooks, whatever -- and people can ask questions in their own language and get answers grounded in those documents.
+Multilingual AI that runs anywhere, without internet.
 
-It is built for places where there is no reliable internet: rural health posts, community centers, field offices, schools. Everything runs locally on a single device. No cloud APIs, no network calls, no data leaving the machine.
+Load it with documents, and people can ask questions in their own language -- getting answers grounded in those documents, with source references. It translates between languages, explains concepts, and makes information accessible to people who would otherwise not have access to it.
 
-The system uses RAG (Retrieval-Augmented Generation), which means it does not just generate text from a language model -- it first searches the loaded documents for relevant passages, then generates an answer based only on what it found. This keeps answers factual and traceable to source documents.
+This is made possible by a new generation of small but capable multilingual models that can run on consumer hardware. A 3B parameter model on a Raspberry Pi can now do what required cloud APIs and expensive infrastructure just a year ago. Combined with local vector search and document parsing, it becomes a self-contained knowledge system that works offline.
+
+**Where it can be used:**
+
+- **Schools and universities** -- students access educational material, get explanations, and translate content in their own language on a shared classroom device
+- **Language learning stations** -- learners practice translation and conversation with an AI powered by local documents and phrasebooks
+- **Tourist information kiosks** -- visitors ask about local attractions, transportation, and services in their own language
+- **Field offices and NGOs** -- workers access operational manuals, training material, and policy documents in the field without connectivity
+- **Community centers and libraries** -- a shared knowledge terminal where residents ask about government services, civic rights, or local information in their language
+- **Employee onboarding** -- new hires query company handbooks and policies in their preferred language
+
+The system uses RAG (Retrieval-Augmented Generation) -- it searches loaded documents for relevant passages, then generates an answer based only on what it found. This keeps answers factual and traceable to source documents.
 
 ### How it works
 
