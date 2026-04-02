@@ -47,9 +47,10 @@ Pydantic Settings is a library that maps environment variables to typed Python a
 |---|---|---|
 | `EDGE_MODEL_PATH` | `/data/models/tiny-aya-global-q4_k_m.gguf` | Path to the GGUF language model |
 | `EDGE_EMBEDDING_MODEL` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | FastEmbed model for text-to-vector |
-| `EDGE_CHUNK_SIZE` | `500` | Characters per chunk |
-| `EDGE_CHUNK_OVERLAP` | `50` | Overlap between adjacent chunks |
-| `EDGE_TOP_K` | `3` | Final number of chunks passed to the LLM |
+| `EDGE_RERANKER_MODEL` | `jinaai/jina-reranker-v2-base-multilingual` | Cross-encoder reranker model |
+| `EDGE_CHUNK_SIZE` | `250` | Characters per chunk |
+| `EDGE_CHUNK_OVERLAP` | `30` | Overlap between adjacent chunks |
+| `EDGE_TOP_K` | `5` | Final number of chunks passed to the LLM |
 | `EDGE_SCORE_THRESHOLD` | `0.3` | Minimum cosine similarity for initial retrieval |
 | `EDGE_MAX_TOKENS` | `100` | Maximum tokens the LLM generates per answer |
 | `EDGE_CORPUS_DIR` | `/data/corpus` | Directory for baked-in documents |
@@ -159,14 +160,14 @@ Point IDs are generated via SHA-256 hash of `source_file:chunk_index`, making re
 
 ### reranker.py -- Cross-Encoder Reranking
 
-Wraps FastEmbed's `TextCrossEncoder` using the `Xenova/ms-marco-MiniLM-L-6-v2` model.
+Wraps FastEmbed's `TextCrossEncoder`. The model is configurable via `EDGE_RERANKER_MODEL`.
 
 **Cross-encoder reranking** is a second-stage retrieval technique. The embedder (bi-encoder) is fast but approximate: it encodes the question and each chunk independently, then compares their vectors. A cross-encoder is slower but more precise: it takes the question and a chunk as a single concatenated input, allowing full token-level attention between them. This means it can understand the relationship between question and chunk more accurately than vector similarity alone.
 
-**ms-marco-MiniLM-L-6-v2** is a cross-encoder model trained on the MS MARCO passage ranking dataset. It takes a (query, passage) pair and outputs a relevance score. It runs via ONNX Runtime, same as the embedder.
+Two models are supported:
 
-- **Model size:** ~80 MB
-- **Languages:** primarily English, but effective for scoring multilingual retrieved chunks against English-language questions
+- **Xenova/ms-marco-MiniLM-L-6-v2** (80 MB, English) — lightweight, fast, suitable for English-only corpora
+- **jinaai/jina-reranker-v2-base-multilingual** (1.1 GB, 100+ languages) — built on XLM-RoBERTa, understands non-English text natively. Default for multilingual deployments.
 
 The pipeline: retrieve 10 candidates loosely with the bi-encoder (score threshold 0.3), then rerank to pick the best 3 with the cross-encoder.
 
@@ -388,7 +389,8 @@ Python 3.11-slim base
 | Model | Type | Size | Purpose | Languages |
 |---|---|---|---|---|
 | paraphrase-multilingual-MiniLM-L12-v2 | Bi-encoder (ONNX) | 220 MB | Text embedding | 50+ |
-| Xenova/ms-marco-MiniLM-L-6-v2 | Cross-encoder (ONNX) | 80 MB | Reranking | English-focused |
+| jinaai/jina-reranker-v2-base-multilingual | Cross-encoder (ONNX) | 1.1 GB | Reranking (default) | 100+ |
+| Xenova/ms-marco-MiniLM-L-6-v2 | Cross-encoder (ONNX) | 80 MB | Reranking (English alt) | English |
 | CohereLabs/tiny-aya-global (Q4_K_M) | Generative LLM (GGUF) | 2.1 GB | Answer generation | 70+ |
 
 ## Quality Controls

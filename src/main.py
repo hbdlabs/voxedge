@@ -48,7 +48,7 @@ def create_app(
                 n_threads=settings.n_threads,
             )
         if app.state.reranker is None:
-            app.state.reranker = Reranker()
+            app.state.reranker = Reranker(model_name=settings.reranker_model)
 
         # Ingest baked-in corpus (only new files)
         corpus_dir = Path(settings.corpus_dir)

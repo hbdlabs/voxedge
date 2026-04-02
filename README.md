@@ -366,6 +366,7 @@ All settings are configurable via environment variables with the `EDGE_` prefix:
 ```bash
 # Override any default
 EDGE_MODEL_PATH=~/models/tiny-aya-global-q4_k_m.gguf  # GGUF model location
+EDGE_RERANKER_MODEL=jinaai/jina-reranker-v2-base-multilingual  # reranker model
 EDGE_CHUNK_SIZE=300          # smaller chunks for more precise retrieval
 EDGE_CHUNK_OVERLAP=30        # overlap between chunks
 EDGE_TOP_K=5                 # number of chunks passed to LLM
@@ -375,11 +376,32 @@ EDGE_N_THREADS=8             # CPU threads for LLM (match your core count)
 EDGE_N_CTX=2048              # LLM context window (lower = less RAM)
 ```
 
+### Choosing a reranker
+
+The reranker is the precision filter between vector search and the LLM. Pick based on your corpus language:
+
+```bash
+# English-only corpus (default for lightweight deployments)
+EDGE_RERANKER_MODEL=Xenova/ms-marco-MiniLM-L-6-v2
+
+# Non-English or mixed-language corpus (default)
+EDGE_RERANKER_MODEL=jinaai/jina-reranker-v2-base-multilingual
+```
+
+| Model | Size | Speed | Best for |
+|---|---|---|---|
+| `Xenova/ms-marco-MiniLM-L-6-v2` | 80 MB | ~5ms/chunk | English-only corpus |
+| `jinaai/jina-reranker-v2-base-multilingual` | 1.1 GB | ~50ms/chunk | Non-English or mixed corpus |
+
+The multilingual reranker is the default because the system is designed for multilingual use. If you deploy with English-only content and want a smaller footprint, switch to the English model.
+
+The English reranker struggles with non-English content — it may score the wrong chunk higher when multiple similar chunks compete in a non-English document. This leads to correct retrieval (right document found) but wrong answers (wrong chunk selected from that document).
+
 ### Tuning guidelines
 
 **EDGE_CHUNK_SIZE**: Smaller chunks (200-300) give more precise retrieval but may split important context across chunks. Larger chunks (500-800) preserve more context per chunk but may dilute relevance.
 
-**EDGE_TOP_K**: More chunks give the LLM more context to work with but increase generation time and the chance of irrelevant information leaking in. 3 is a good default.
+**EDGE_TOP_K**: More chunks give the LLM more context to work with but increase generation time and the chance of irrelevant information leaking in. 5 is the default. Reduce to 3 if answers are unfocused, increase to 7 if the right information keeps getting excluded.
 
 **EDGE_SCORE_THRESHOLD**: This is the initial retrieval threshold before reranking. Lower values (0.2-0.3) cast a wider net, relying on the reranker to filter. Higher values (0.5+) are stricter but may miss relevant chunks.
 
