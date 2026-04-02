@@ -1,0 +1,35 @@
+app = 'edge-rag-brain'
+primary_region = 'arn'
+
+[build]
+
+[env]
+  EDGE_QDRANT_DIR = '/persist/qdrant'
+  EDGE_RERANKER_MODEL = 'Xenova/ms-marco-MiniLM-L-6-v2'
+  HF_HOME = '/persist/hf_cache'
+  FASTEMBED_CACHE_PATH = '/persist/fastembed_cache'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'suspend'
+  auto_start_machines = true
+  min_machines_running = 1
+
+[mounts]
+  source = 'edge_brain_data'
+  destination = '/persist'
+
+[[vm]]
+  memory = '8192'
+  cpu_kind = 'performance'
+  cpus = 4
+
+[checks]
+  [checks.health]
+    type = 'http'
+    port = 8080
+    path = '/health'
+    interval = '30s'
+    timeout = '10s'
+    grace_period = '600s'
