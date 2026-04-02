@@ -405,6 +405,22 @@ Python 3.11-slim base
 | Deterministic point IDs | Duplicate chunks on re-ingestion |
 | Startup dedup check | Re-indexing already-ingested corpus files |
 
+## Key Technologies
+
+### ONNX and ONNX Runtime
+
+ONNX (Open Neural Network Exchange) is a standard file format for machine learning models. It allows a model trained in one framework (e.g., PyTorch) to be exported as a `.onnx` file and run in a different runtime. ONNX Runtime is a lightweight C++ inference engine by Microsoft that executes these models. It supports CPU-optimized kernels for both ARM and x86 architectures.
+
+The embedder and reranker both use ONNX Runtime through FastEmbed. This avoids a PyTorch dependency (~2 GB), requires no GPU, and keeps the runtime footprint small -- critical for edge deployment.
+
+### GGUF
+
+GGUF (GPT-Generated Unified Format) is a binary file format for storing quantized LLM weights, used by llama.cpp. Quantization reduces model precision (e.g., from 16-bit floats to 4-bit integers) to shrink model size and memory usage. The Q4_K_M quantization used here reduces Tiny Aya from ~6.7 GB (full precision) to ~2.1 GB with minimal quality loss. llama-cpp-python loads GGUF files directly into memory for inference.
+
+### Cosine Similarity
+
+The distance metric used for vector search. It measures the angle between two vectors, returning a value from -1 (opposite) to 1 (identical). Two texts about the same topic produce vectors with high cosine similarity regardless of language, because the multilingual embedding model maps semantically similar text to nearby regions in vector space.
+
 ## Test Coverage
 
 27 unit/integration tests + 1 end-to-end test with real models.
