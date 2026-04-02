@@ -1,11 +1,37 @@
-.venv/
+# Python
 __pycache__/
 *.pyc
 *.pyo
-.pytest_cache/
 *.egg-info/
 dist/
 build/
+.venv/
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Environment
 .env
+.env.*
+
+# Models (large binary files)
 *.gguf
+*.onnx
+*.bin
+*.traineddata
+
+# Qdrant Edge storage (runtime data)
 /data/qdrant/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

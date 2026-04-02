@@ -1,8 +1,18 @@
 [project]
 name = "ll-edge-brain"
 version = "0.1.0"
-description = "Self-contained offline edge RAG brain"
+description = "Self-contained offline multilingual RAG system for edge devices"
 requires-python = ">=3.11"
+license = {text = "MIT"}
+readme = "README.md"
+keywords = ["rag", "edge", "offline", "multilingual", "qdrant", "llm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn>=0.30.0",
@@ -25,6 +35,10 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
 
 [build-system]
 requires = ["setuptools>=68.0"]

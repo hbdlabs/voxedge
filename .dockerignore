@@ -1,8 +1,32 @@
-data/qdrant/
-data/models/*.gguf
+# Git
+.git/
+.gitignore
+
+# Python
 __pycache__/
 *.pyc
-.git/
-.pytest_cache/
-tests/
 .venv/
+*.egg-info/
+
+# Testing
+tests/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Runtime data (not baked into image)
+data/qdrant/
+data/models/*.gguf
+
+# Environment
+.env
+.env.*
+
+# Docs (not needed in container)
+docs/
+*.md
+!README.md
+
+# IDE
+.vscode/
+.idea/
