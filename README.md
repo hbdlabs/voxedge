@@ -149,17 +149,22 @@ curl http://localhost:8080/health
 
 ## Fly.io Deployment
 
-Two fly configs are provided:
+Two fly configs are provided. Performance CPUs are required — shared CPUs cannot run the 3.35B LLM within HTTP timeouts.
 
+**Full mode** (performance 4-core, 8 GB, persistent volume for vector storage):
 ```bash
-# Full mode (performance 4-core, 8 GB, persistent volume)
+fly apps create edge-rag-brain
+fly volumes create edge_brain_data --region arn --size 5
 fly deploy --config fly.full.toml --remote-only
+```
 
-# Chat mode (performance 2-core, 8 GB, no volume)
+**Chat mode** (performance 2-core, 8 GB, no volume needed):
+```bash
+fly apps create edge-rag-brain
 fly deploy --config fly.chat.toml --remote-only
 ```
 
-Performance CPUs are required -- shared CPUs cannot run the 3.35B LLM within HTTP timeouts.
+First startup takes 3-5 minutes (downloading embedding and reranker models). Subsequent starts are faster if using a persistent volume with `HF_HOME` set (models are cached).
 
 ## Kubernetes Deployment
 
@@ -235,6 +240,13 @@ Set `initialDelaySeconds: 60` on probes to allow time for model loading and corp
 
 The Docker image is built for `arm64`, compatible with Raspberry Pi 4/5 (64-bit OS).
 
+**Install Docker on the Pi** (one-time):
+```bash
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+# Log out and back in
+```
+
 **Pull from registry:**
 ```bash
 docker pull ghcr.io/YOUR_USER/edge-brain:latest
@@ -245,7 +257,7 @@ docker run -d -p 8080:8080 -v edge-data:/data/qdrant ghcr.io/YOUR_USER/edge-brai
 ```bash
 # On build machine:
 docker save edge-brain | gzip > edge-brain.tar.gz
-# Transfer to Pi, then:
+# Transfer to Pi via USB stick or scp, then:
 docker load < edge-brain.tar.gz
 docker run -d -p 8080:8080 -v edge-data:/data/qdrant edge-brain
 ```
@@ -309,7 +321,11 @@ curl -X POST http://localhost:8080/chat \
   -d '{"message": "Hva betyr feriepenger?", "system": "Svar kort på norsk."}'
 ```
 
-The `system` field is optional.
+```json
+{"response": "Feriepenger er en type lønn som ansatte får under sin ferie..."}
+```
+
+The `system` field is optional. Without it, the model responds in whatever language the message is in.
 
 ### POST /translate
 
@@ -327,6 +343,14 @@ curl -X POST http://localhost:8080/translate \
 curl -X POST http://localhost:8080/translate \
   -H "Content-Type: application/json" \
   -d '{"text": "Xin chào", "source": "Vietnamese", "target": "Norwegian"}'
+```
+
+```json
+{
+  "translation": "Vaksinen er gratis på alle helsestasjoner.",
+  "source": "English",
+  "target": "Norwegian"
+}
 ```
 
 ### GET /info
