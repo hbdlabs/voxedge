@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 # Install system deps
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl unzip build-essential && \
+    apt-get install -y --no-install-recommends curl unzip build-essential libreoffice-core libreoffice-writer libreoffice-calc libreoffice-impress && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Bun (for LiteParse)
