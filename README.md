@@ -1,5 +1,7 @@
 # Edge RAG Brain
 
+*Built by hbdlabs — making smart systems available for everyone, everywhere.*
+
 ## What is this
 
 Multilingual AI that runs anywhere, without internet.
