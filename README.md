@@ -31,7 +31,7 @@ The system uses RAG (Retrieval-Augmented Generation), which means it does not ju
 | Vector storage | Qdrant Edge | Store and search vectors locally on disk |
 | Reranking | FastEmbed Cross-Encoder (ONNX) | Precision-filter retrieved chunks |
 | Generation | llama-cpp-python + Tiny Aya 3.35B (GGUF) | Generate multilingual answers on CPU |
-| API | FastAPI | HTTP endpoints for query, ingest, health, corpus |
+| API | FastAPI | HTTP endpoints for query, ingest, chat, translate, health, corpus |
 
 For detailed component descriptions and data flow diagrams, see [docs/architecture.md](docs/architecture.md).
 
@@ -333,6 +333,72 @@ curl -X POST http://localhost:8080/ingest \
 Supported formats: `.txt`, `.md`, `.pdf`, `.docx`, `.doc`, `.pptx`, `.xlsx`. PDF and Office formats require Bun and LiteParse.
 
 Re-ingesting the same file overwrites existing chunks (deterministic IDs based on filename + chunk index).
+
+### POST /chat
+
+Direct chat with the language model, no RAG retrieval. Useful for general questions, explanations, or conversation. Optional system prompt to set the tone or language.
+
+**Request:**
+```bash
+curl -X POST http://localhost:8080/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hva betyr feriepenger?", "system": "Svar kort på norsk."}'
+```
+
+**Response:**
+```json
+{
+  "response": "Feriepenger er en type lønn som ansatte får under sin ferie..."
+}
+```
+
+The `system` field is optional. Without it, the model responds in whatever language the message is in.
+
+### POST /translate
+
+Translate text between languages. Configurable via `EDGE_LOCAL_LANGUAGE` (default: Norwegian).
+
+**Auto-detect direction** — if no source/target specified, English input translates to the local language and non-English input translates to English:
+
+```bash
+# English → Norwegian (auto)
+curl -X POST http://localhost:8080/translate \
+  -H "Content-Type: application/json" \
+  -d '{"text": "The vaccine is free at all health centers."}'
+
+# Norwegian → English (auto)
+curl -X POST http://localhost:8080/translate \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Alle ansatte har rett på 5 uker ferie hvert år."}'
+```
+
+**Explicit source and target:**
+
+```bash
+# Vietnamese → Norwegian
+curl -X POST http://localhost:8080/translate \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Xin chào, tôi cần giúp đỡ.", "source": "Vietnamese", "target": "Norwegian"}'
+
+# Spanish → English
+curl -X POST http://localhost:8080/translate \
+  -H "Content-Type: application/json" \
+  -d '{"text": "La vacuna es gratuita.", "source": "Spanish", "target": "English"}'
+```
+
+**Response:**
+```json
+{
+  "translation": "Legen anbefaler at du tar denne medisinen to ganger i døgnet med mat.",
+  "source": "English",
+  "target": "Norwegian"
+}
+```
+
+To change the default local language:
+```bash
+EDGE_LOCAL_LANGUAGE=Vietnamese  # or Spanish, French, etc.
+```
 
 ### GET /health
 
