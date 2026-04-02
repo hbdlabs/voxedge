@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from src.config import detect_language
 from src.embedder import Embedder
 from src.generator import Generator
+from src.reranker import Reranker
 from src.store import VectorStore
 
 
@@ -18,37 +19,46 @@ def query_brain(
     embedder: Embedder,
     store: VectorStore,
     generator: Generator,
-    top_k: int = 5,
-    score_threshold: float = 0.5,
+    reranker: Reranker | None = None,
+    top_k: int = 3,
+    retrieve_k: int = 10,
+    score_threshold: float = 0.3,
     max_tokens: int = 512,
 ) -> QueryResult:
-    """Embed question, retrieve context, generate answer."""
+    """Embed question, retrieve candidates, rerank, generate answer."""
     language = detect_language(question)
 
     query_vector = embedder.embed([question])[0]
 
+    # Retrieve more candidates with a loose threshold
     results = store.query(
         vector=query_vector,
-        limit=top_k,
+        limit=retrieve_k,
         score_threshold=score_threshold,
     )
+
+    if not results:
+        return QueryResult(
+            answer="I don't have information about that.",
+            sources=[],
+            language=language,
+        )
+
+    # Rerank to pick the best chunks
+    if reranker:
+        results = reranker.rerank(query=question, chunks=results, top_k=top_k)
+    else:
+        results = results[:top_k]
 
     chunks = [r["payload"]["text"] for r in results]
     sources = [
         {
             "file": r["payload"]["source_file"],
             "chunk": r["payload"].get("chunk_index", 0),
-            "score": round(r["score"], 4),
+            "score": round(r.get("rerank_score", r["score"]), 4),
         }
         for r in results
     ]
-
-    if not chunks:
-        return QueryResult(
-            answer="I don't have information about that.",
-            sources=[],
-            language=language,
-        )
 
     answer = generator.generate(
         chunks=chunks,

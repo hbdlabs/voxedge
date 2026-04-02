@@ -9,17 +9,19 @@ def mock_components():
     embedder = MagicMock()
     store = MagicMock()
     generator = MagicMock()
-    return embedder, store, generator
+    reranker = MagicMock()
+    reranker.rerank.side_effect = lambda query, chunks, top_k: chunks[:top_k]
+    return embedder, store, generator, reranker
 
 
 @pytest.fixture
 def app(mock_components):
-    embedder, store, generator = mock_components
+    embedder, store, generator, reranker = mock_components
     store.count.return_value = 42
     store.list_documents.return_value = [
         {"source_file": "test.pdf", "chunks": 10, "language": "en", "ingested_at": "2026-04-01T00:00:00"}
     ]
-    return create_app(embedder=embedder, store=store, generator=generator)
+    return create_app(embedder=embedder, store=store, generator=generator, reranker=reranker)
 
 
 @pytest.mark.asyncio
@@ -47,7 +49,7 @@ async def test_corpus(app):
 
 @pytest.mark.asyncio
 async def test_query_endpoint(app, mock_components):
-    embedder, store, generator = mock_components
+    embedder, store, generator, reranker = mock_components
     embedder.embed.return_value = [[0.1] * 384]
     store.query.return_value = [
         {"id": 1, "score": 0.9, "payload": {"text": "Answer context.", "source_file": "doc.pdf", "chunk_index": 0}},

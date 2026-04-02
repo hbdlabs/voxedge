@@ -11,6 +11,7 @@ from src.embedder import Embedder
 from src.generator import Generator
 from src.ingest import ingest_file
 from src.query import query_brain
+from src.reranker import Reranker
 from src.store import VectorStore
 
 
@@ -25,6 +26,7 @@ def create_app(
     embedder: Embedder | None = None,
     store: VectorStore | None = None,
     generator: Generator | None = None,
+    reranker: Reranker | None = None,
 ) -> FastAPI:
     """Create the FastAPI app. Accepts optional pre-built components for testing."""
 
@@ -45,6 +47,8 @@ def create_app(
                 n_ctx=settings.n_ctx,
                 n_threads=settings.n_threads,
             )
+        if app.state.reranker is None:
+            app.state.reranker = Reranker()
 
         # Ingest baked-in corpus (only new files)
         corpus_dir = Path(settings.corpus_dir)
@@ -68,6 +72,7 @@ def create_app(
     app.state.embedder = embedder
     app.state.store = store
     app.state.generator = generator
+    app.state.reranker = reranker
 
     @app.get("/health")
     def health():
@@ -93,6 +98,7 @@ def create_app(
             embedder=app.state.embedder,
             store=app.state.store,
             generator=app.state.generator,
+            reranker=app.state.reranker,
             top_k=settings.top_k,
             score_threshold=settings.score_threshold,
             max_tokens=settings.max_tokens,

@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     chunk_size: int = 500
     chunk_overlap: int = 50
     top_k: int = 3
-    score_threshold: float = 0.5
+    score_threshold: float = 0.3
     corpus_dir: str = "/data/corpus"
     qdrant_dir: str = "/data/qdrant"
     max_tokens: int = 100
