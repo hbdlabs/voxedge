@@ -414,6 +414,8 @@ EDGE_LOCAL_LANGUAGE=Vietnamese  # or Spanish, French, etc.
 
 ### GET /corpus
 
+List all indexed documents.
+
 **Response:**
 ```json
 {
@@ -424,6 +426,25 @@ EDGE_LOCAL_LANGUAGE=Vietnamese  # or Spanish, French, etc.
   "total_chunks": 70
 }
 ```
+
+### DELETE /corpus/{filename}
+
+Remove a document and all its vectors from the index.
+
+```bash
+curl -X DELETE http://localhost:8080/corpus/Ferie.pdf
+```
+
+**Response:**
+```json
+{
+  "deleted": "Ferie.pdf",
+  "chunks_removed": 65,
+  "total_chunks": 5
+}
+```
+
+The document is removed from search results immediately. If the file was baked into the Docker image at `data/corpus/`, it will be re-indexed on next restart. Runtime-uploaded documents are gone permanently.
 
 ## Configuration
 
@@ -554,21 +575,31 @@ curl https://abc123.ngrok.io/query \
   -d '{"question": "What vaccines do children need?"}'
 ```
 
-### Updating the corpus without rebuilding
+### Managing the corpus
 
-If the container is running with a volume mount:
-
+**Add documents:**
 ```bash
-# Upload new documents via API
 curl -X POST http://localhost:8080/ingest -F "files=@new_guide.pdf"
+```
 
-# Verify
+**List indexed documents:**
+```bash
 curl http://localhost:8080/corpus
 ```
 
-No restart needed. New documents are indexed immediately.
+**Remove a document:**
+```bash
+curl -X DELETE http://localhost:8080/corpus/new_guide.pdf
+```
 
-To replace baked-in corpus documents, rebuild the image with updated files in `data/corpus/`.
+**Replace a document** (re-ingesting the same filename overwrites existing chunks):
+```bash
+curl -X POST http://localhost:8080/ingest -F "files=@updated_guide.pdf"
+```
+
+No restart needed for any of these operations. Changes take effect immediately.
+
+To change the baked-in corpus (documents that auto-index on startup), update the files in `data/corpus/` and rebuild the Docker image.
 
 ### Backup and restore
 
