@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     chunk_size: int = 250
     chunk_overlap: int = 30
-    top_k: int = 3
+    top_k: int = 5
     score_threshold: float = 0.3
     corpus_dir: str = "/data/corpus"
     qdrant_dir: str = "/data/qdrant"
