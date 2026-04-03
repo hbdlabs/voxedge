@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from qdrant_edge import (
@@ -16,6 +17,8 @@ from qdrant_edge import (
     UpdateOperation,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class VectorStore:
     def __init__(self, path: str, vector_size: int = 384):
@@ -24,9 +27,10 @@ class VectorStore:
         if self._path.exists() and any(self._path.iterdir()):
             try:
                 self._shard = EdgeShard.load(str(self._path))
+                logger.info("Loaded existing shard from %s", path)
                 return
             except Exception:
-                pass
+                logger.warning("Failed to load existing shard at %s, creating new one", path)
         self._path.mkdir(parents=True, exist_ok=True)
         config = EdgeConfig(
             vectors=EdgeVectorParams(
@@ -35,6 +39,7 @@ class VectorStore:
             ),
         )
         self._shard = EdgeShard.create(str(self._path), config)
+        logger.info("Created new shard at %s (vector_size=%d)", path, vector_size)
 
     def upsert(self, point_id: int, vector: list[float], payload: dict) -> None:
         self._shard.update(

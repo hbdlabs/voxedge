@@ -1,4 +1,5 @@
 import hashlib
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,6 +9,8 @@ from src.config import detect_language
 from src.embedder import Embedder
 from src.parser import parse_file
 from src.store import VectorStore
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -37,6 +40,7 @@ def ingest_file(
     chunks = chunk_text(text, chunk_size=chunk_size, overlap=chunk_overlap)
 
     if not chunks:
+        logger.warning("No chunks produced for file: %s", name)
         return IngestResult(file=name, chunks=0, language="unknown")
 
     language = detect_language(chunks[0])
@@ -58,6 +62,7 @@ def ingest_file(
         ))
 
     store.upsert_batch(points)
+    logger.info("Ingested %s: %d chunks, language=%s", name, len(chunks), language)
     return IngestResult(file=name, chunks=len(chunks), language=language)
 
 
