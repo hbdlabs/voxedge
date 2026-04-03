@@ -170,7 +170,13 @@ Startup takes 15-30 seconds in full mode (loading all models + indexing corpus),
 # Optionally place documents in data/corpus/ before building
 cp your_documents/*.pdf data/corpus/
 
-# Build the image (~10 min first time, downloads 2.1 GB model)
+# Build with Gemma 4 (Apache 2.0, commercial OK)
+docker build -f deploy/docker/Dockerfile.gemma -t voxedge .
+
+# Build with Tiny Aya (CC-BY-NC, more languages)
+docker build -f deploy/docker/Dockerfile.aya -t voxedge .
+
+# Or use root Dockerfile (defaults to Aya)
 docker build -t voxedge .
 ```
 
@@ -198,17 +204,24 @@ The volume mount (`-v voxedge-data:/data/qdrant`) persists the vector index acro
 
 ```bash
 curl http://localhost:8080/health
+# Check which model profile is active
+curl http://localhost:8080/info
 ```
 
 ## Fly.io Deployment
 
-Two fly configs are provided. Performance CPUs are required — shared CPUs cannot run the 3.35B LLM within HTTP timeouts.
+Performance CPUs are required — shared CPUs cannot run LLM inference within HTTP timeouts.
 
-**Full mode** (performance 4-core, 8 GB, persistent volume for vector storage):
+**Full mode** (performance 4-core, 8 GB, persistent volume):
 ```bash
 fly apps create voxedge
 fly volumes create voxedge_data --region arn --size 5
-fly deploy --config deploy/fly/fly.full.toml --remote-only
+
+# With Gemma 4
+fly deploy --config deploy/fly/fly.full.toml --dockerfile deploy/docker/Dockerfile.gemma --remote-only
+
+# With Tiny Aya
+fly deploy --config deploy/fly/fly.full.toml --dockerfile deploy/docker/Dockerfile.aya --remote-only
 ```
 
 **Chat mode** (performance 2-core, 8 GB, no volume needed):
@@ -217,7 +230,7 @@ fly apps create voxedge
 fly deploy --config deploy/fly/fly.chat.toml --remote-only
 ```
 
-First startup takes 3-5 minutes (downloading embedding and reranker models). Subsequent starts are faster if using a persistent volume with `HF_HOME` set (models are cached).
+First startup takes 6-8 minutes (loading LLM, downloading embedding and reranker models). Subsequent starts are faster when using `EDGE_CACHE_DIR` on a persistent volume.
 
 ## Kubernetes Deployment
 
