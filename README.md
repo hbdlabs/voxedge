@@ -313,25 +313,31 @@ sudo usermod -aG docker $USER
 # Log out and back in
 ```
 
-**Pull from registry:**
+**Build the image with your chosen model profile:**
 ```bash
+# Gemma 4 (Apache 2.0, needs 8 GB Pi)
+docker build -f deploy/docker/Dockerfile.gemma -t voxedge .
+
+# Tiny Aya (CC-BY-NC, fits on 4 GB Pi)
+docker build -f deploy/docker/Dockerfile.aya -t voxedge .
+```
+
+**Transfer to the Pi** (via registry or USB):
+```bash
+# Option A: registry
+docker push ghcr.io/YOUR_USER/voxedge:latest
+# On the Pi:
 docker pull ghcr.io/YOUR_USER/voxedge:latest
-docker run -d -p 8080:8080 -v edge-data:/data/qdrant ghcr.io/YOUR_USER/voxedge:latest
-```
+docker run -d -p 8080:8080 -v voxedge-data:/data/qdrant ghcr.io/YOUR_USER/voxedge:latest
 
-**Transfer image file (air-gapped):**
-```bash
-# On build machine:
+# Option B: air-gapped (USB stick)
 docker save voxedge | gzip > voxedge.tar.gz
-# Transfer to Pi via USB stick or scp, then:
+# On the Pi:
 docker load < voxedge.tar.gz
-docker run -d -p 8080:8080 -v edge-data:/data/qdrant voxedge
+docker run -d -p 8080:8080 -v voxedge-data:/data/qdrant voxedge
 ```
 
-**Hardware notes:**
-- Raspberry Pi 5 (8 GB): runs well, queries take 5-15 seconds
-- Raspberry Pi 4 (4 GB): functional but tight on RAM, use swap
-- Raspberry Pi 4 (2 GB): not recommended
+Check which profile is running with `curl http://PI_IP:8080/info`.
 
 ## API Reference
 
