@@ -16,6 +16,7 @@ class ModelProfile:
     chat_format: str = "raw"
     n_ctx_default: int = 4096
     patches: list[str] = field(default_factory=list)
+    use_chat_api: bool = False  # If True, use create_chat_completion instead of create_completion
 
 
 AYA = ModelProfile(
@@ -72,6 +73,7 @@ GEMMA = ModelProfile(
     chat_format="raw",
     n_ctx_default=8192,
     patches=[],
+    use_chat_api=True,
 )
 
 PROFILES = {

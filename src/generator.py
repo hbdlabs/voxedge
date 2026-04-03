@@ -42,6 +42,30 @@ class Generator:
             chat_format=profile.chat_format,
         )
 
+    def _complete(self, prompt: str, max_tokens: int, temperature: float,
+                  repeat_penalty: float, stop: list[str]) -> str:
+        """Route to chat API or completion API based on profile."""
+        if self._profile.use_chat_api:
+            messages = [{"role": "user", "content": prompt}]
+            result = self._llm.create_chat_completion(
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=0.9,
+                repeat_penalty=repeat_penalty,
+            )
+            return result["choices"][0]["message"]["content"].strip()
+        else:
+            result = self._llm.create_completion(
+                prompt=prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=0.9,
+                repeat_penalty=repeat_penalty,
+                stop=stop,
+            )
+            return result["choices"][0]["text"].strip()
+
     def generate(
         self,
         chunks: list[str],
@@ -49,29 +73,25 @@ class Generator:
         max_tokens: int = 512,
     ) -> str:
         prompt = build_prompt(self._profile, chunks, question)
-        result = self._llm.create_completion(
+        return self._complete(
             prompt=prompt,
             max_tokens=max_tokens,
             temperature=self._profile.temperature,
-            top_p=0.9,
             repeat_penalty=self._profile.repeat_penalty,
             stop=self._profile.stop_rag,
         )
-        return result["choices"][0]["text"].strip()
 
     def chat(self, message: str, system: str = "", max_tokens: int = 200) -> str:
         prompt = self._profile.chat_template.format(
             system=system, message=message
         )
-        result = self._llm.create_completion(
+        return self._complete(
             prompt=prompt,
             max_tokens=max_tokens,
             temperature=self._profile.temperature,
-            top_p=0.9,
             repeat_penalty=self._profile.repeat_penalty,
             stop=self._profile.stop_chat,
         )
-        return result["choices"][0]["text"].strip()
 
     def translate(
         self, text: str, source_lang: str, target_lang: str, max_tokens: int = 200
@@ -82,12 +102,10 @@ class Generator:
         stop = list(self._profile.stop_translate)
         if not stop:
             stop = [f"\n{source_lang}:", "\n\n", f"\n{target_lang}:"]
-        result = self._llm.create_completion(
+        return self._complete(
             prompt=prompt,
             max_tokens=max_tokens,
             temperature=0.1,
-            top_p=0.9,
             repeat_penalty=self._profile.translate_repeat_penalty,
             stop=stop,
         )
-        return result["choices"][0]["text"].strip()
