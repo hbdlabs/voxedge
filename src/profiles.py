@@ -62,11 +62,11 @@ GEMMA = ModelProfile(
         "Question: {question}\n\n"
         "Answer:"
     ),
-    chat_template="{system}\n\nUser: {message}\n\nAssistant:",
-    translate_template="Translate from {source} to {target}. Output ONLY the translation.\n\n{text}\n\nTranslation:",
+    chat_template="{system}\nUser: {message}\nAssistant:",
+    translate_template="Translate the following from {source} to {target}. Reply with ONLY the translation.\n{source}: {text}\n{target}:",
     stop_rag=["\nQuestion:", "\n\n\n", "\nAnswer:"],
     stop_chat=["\nUser:", "\n\n\n"],
-    stop_translate=["\n\n"],
+    stop_translate=[],
     temperature=0.3,
     repeat_penalty=1.1,
     translate_repeat_penalty=1.1,
