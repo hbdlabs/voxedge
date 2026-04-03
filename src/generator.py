@@ -33,14 +33,16 @@ class Generator:
     ):
         self._profile = profile
         _apply_patches(profile.patches)
-        self._llm = Llama(
+        kwargs = dict(
             model_path=model_path,
             n_ctx=n_ctx or profile.n_ctx_default,
             n_threads=n_threads,
             n_gpu_layers=0,
             verbose=False,
-            chat_format=profile.chat_format,
         )
+        if profile.chat_format:
+            kwargs["chat_format"] = profile.chat_format
+        self._llm = Llama(**kwargs)
 
     @staticmethod
     def _strip_thinking(text: str) -> str:
