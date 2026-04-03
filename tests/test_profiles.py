@@ -20,7 +20,7 @@ def test_gemma_profile_exists():
     assert "{message}" in profile.chat_template
     assert "{text}" in profile.translate_template
     assert len(profile.stop_rag) > 0
-    assert profile.patches == []
+    assert profile.use_chat_api is True
     assert profile.n_ctx_default == 8192
 
 

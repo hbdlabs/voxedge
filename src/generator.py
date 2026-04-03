@@ -46,12 +46,25 @@ class Generator:
     def _strip_thinking(text: str) -> str:
         """Strip Gemma 4 thinking channel tokens from output."""
         import re
-        # Remove <|channel>thought\n...<channel|> blocks
-        text = re.sub(r"<\|channel>thought\n.*?<channel\|>", "", text, flags=re.DOTALL)
+        # If there's a response channel after thinking, extract it
+        response_match = re.search(r"<\|channel>response\n(.*?)(?:<channel\|>|$)", text, flags=re.DOTALL)
+        if response_match:
+            return response_match.group(1).strip()
+        # Remove complete thinking blocks
+        cleaned = re.sub(r"<\|channel>thought\n.*?<channel\|>", "", text, flags=re.DOTALL)
+        # Remove incomplete thinking (no closing tag — model ran out of tokens mid-thought)
+        cleaned = re.sub(r"<\|channel>thought\n.*", "", cleaned, flags=re.DOTALL)
         # Remove any remaining channel tags
-        text = re.sub(r"<\|channel>[^<]*", "", text)
-        text = re.sub(r"<channel\|>", "", text)
-        return text.strip()
+        cleaned = re.sub(r"<\|channel>[^<]*", "", cleaned)
+        cleaned = re.sub(r"<channel\|>", "", cleaned)
+        cleaned = cleaned.strip()
+        # If stripping removed everything, the answer is in the thinking — extract it
+        if not cleaned and text:
+            # Remove just the channel markers and return the content
+            fallback = re.sub(r"<\|channel>thought\n?", "", text)
+            fallback = re.sub(r"<channel\|>", "", fallback)
+            return fallback.strip()
+        return cleaned
 
     def _complete(self, prompt: str, max_tokens: int, temperature: float,
                   repeat_penalty: float, stop: list[str]) -> str:

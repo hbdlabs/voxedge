@@ -70,10 +70,10 @@ GEMMA = ModelProfile(
     temperature=1.0,
     repeat_penalty=1.1,
     translate_repeat_penalty=1.1,
-    chat_format="raw",
+    chat_format="gemma",
     n_ctx_default=8192,
     patches=["jinja2_loopcontrols"],
-    use_chat_api=False,
+    use_chat_api=True,
 )
 
 PROFILES = {
