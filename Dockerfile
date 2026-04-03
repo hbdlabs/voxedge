@@ -25,6 +25,8 @@ RUN mkdir -p /data/models && \
     curl -L -o /data/models/tiny-aya-global-q4_k_m.gguf \
     "https://huggingface.co/CohereLabs/tiny-aya-global-GGUF/resolve/main/tiny-aya-global-q4_k_m.gguf"
 
+ENV EDGE_MODEL_PROFILE=aya
+
 # Copy baked-in corpus (add docs to data/corpus/ before building)
 COPY data/corpus/ /data/corpus/
 
