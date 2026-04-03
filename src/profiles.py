@@ -67,13 +67,13 @@ GEMMA = ModelProfile(
     stop_rag=["\nQuestion:", "\n\n\n", "\nAnswer:"],
     stop_chat=["\nUser:", "\n\n\n"],
     stop_translate=[],
-    temperature=0.3,
+    temperature=1.0,
     repeat_penalty=1.1,
     translate_repeat_penalty=1.1,
-    chat_format="gemma",
+    chat_format="raw",
     n_ctx_default=8192,
-    patches=[],
-    use_chat_api=True,
+    patches=["jinja2_loopcontrols"],
+    use_chat_api=False,
 )
 
 PROFILES = {
