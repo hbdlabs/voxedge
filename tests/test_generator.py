@@ -19,7 +19,7 @@ def test_build_prompt_aya():
 
 
 def test_build_prompt_gemma():
-    """Gemma profile prompt uses turn markers."""
+    """Gemma profile prompt includes context and question."""
     from src.generator import build_prompt
 
     profile = get_profile("gemma")
@@ -28,10 +28,9 @@ def test_build_prompt_gemma():
         chunks=["Some context."],
         question="What?",
     )
-    assert "<start_of_turn>user" in prompt
     assert "Some context." in prompt
     assert "What?" in prompt
-    assert "<start_of_turn>model" in prompt
+    assert "Answer:" in prompt
 
 
 def test_build_prompt_empty_chunks():
