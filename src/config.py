@@ -12,6 +12,7 @@ def detect_language(text: str) -> str:
 
 class Settings(BaseSettings):
     model_path: str = "/data/models/tiny-aya-global-q4_k_m.gguf"
+    model_profile: str = "aya"
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     reranker_model: str = "jinaai/jina-reranker-v2-base-multilingual"
     chunk_size: int = 250

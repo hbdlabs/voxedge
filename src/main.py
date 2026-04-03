@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from src.config import detect_language, settings
 from src.embedder import Embedder
 from src.generator import Generator
+from src.profiles import get_profile
 from src.ingest import ingest_file
 from src.query import query_brain
 from src.reranker import Reranker
@@ -48,8 +49,10 @@ def create_app(
         _start_time = time.time()
 
         if app.state.generator is None:
+            profile = get_profile(settings.model_profile)
             app.state.generator = Generator(
                 model_path=settings.model_path,
+                profile=profile,
                 n_ctx=settings.n_ctx,
                 n_threads=settings.n_threads,
             )
@@ -118,6 +121,7 @@ def create_app(
     def info():
         result = {
             "mode": settings.mode,
+            "model_profile": settings.model_profile,
             "models": {
                 "llm": settings.model_path,
                 "llm_context": settings.n_ctx,
