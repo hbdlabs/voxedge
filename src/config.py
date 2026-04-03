@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     qdrant_dir: str = "/data/qdrant"
     max_tokens: int = 100
     local_language: str = "Norwegian"
+    cache_dir: str = ""  # If set, FastEmbed/reranker models cached here
     host: str = "0.0.0.0"
     port: int = 8080
     n_ctx: int = 4096

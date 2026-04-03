@@ -59,13 +59,13 @@ def create_app(
 
         if settings.mode == "full":
             if app.state.embedder is None:
-                app.state.embedder = Embedder(model_name=settings.embedding_model)
+                app.state.embedder = Embedder(model_name=settings.embedding_model, cache_dir=settings.cache_dir or None)
             if app.state.store is None:
                 app.state.store = VectorStore(
                     path=settings.qdrant_dir, vector_size=384
                 )
             if app.state.reranker is None:
-                app.state.reranker = Reranker(model_name=settings.reranker_model)
+                app.state.reranker = Reranker(model_name=settings.reranker_model, cache_dir=settings.cache_dir or None)
 
             # Ingest baked-in corpus (only new files)
             corpus_dir = Path(settings.corpus_dir)

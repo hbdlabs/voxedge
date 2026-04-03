@@ -6,8 +6,7 @@ primary_region = 'arn'
 [env]
   EDGE_QDRANT_DIR = '/persist/qdrant'
   EDGE_RERANKER_MODEL = 'Xenova/ms-marco-MiniLM-L-6-v2'
-  HF_HOME = '/persist/hf_cache'
-  FASTEMBED_CACHE_PATH = '/persist/fastembed_cache'
+  EDGE_CACHE_DIR = '/persist/model_cache'
 
 [http_service]
   internal_port = 8080

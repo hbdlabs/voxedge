@@ -2,8 +2,8 @@ from fastembed.rerank.cross_encoder import TextCrossEncoder
 
 
 class Reranker:
-    def __init__(self, model_name: str):
-        self._model = TextCrossEncoder(model_name=model_name)
+    def __init__(self, model_name: str, cache_dir: str | None = None):
+        self._model = TextCrossEncoder(model_name=model_name, cache_dir=cache_dir)
 
     def rerank(
         self,
