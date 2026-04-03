@@ -1,12 +1,19 @@
+import logging
+import re
+
 import jinja2
 from llama_cpp import Llama
 
 from src.profiles import ModelProfile
 
+logger = logging.getLogger(__name__)
+
+_patches_applied: set[str] = set()
+
 
 def _apply_patches(patches: list[str]) -> None:
     """Apply model-specific patches."""
-    if "jinja2_loopcontrols" in patches:
+    if "jinja2_loopcontrols" in patches and "jinja2_loopcontrols" not in _patches_applied:
         _original_env_init = jinja2.Environment.__init__
 
         def _patched_env_init(self, *args, **kwargs):
@@ -16,6 +23,7 @@ def _apply_patches(patches: list[str]) -> None:
             _original_env_init(self, *args, **kwargs)
 
         jinja2.Environment.__init__ = _patched_env_init
+        _patches_applied.add("jinja2_loopcontrols")
 
 
 def build_prompt(profile: ModelProfile, chunks: list[str], question: str) -> str:
@@ -33,6 +41,7 @@ class Generator:
     ):
         self._profile = profile
         _apply_patches(profile.patches)
+        logger.info("Loading model: %s (profile=%s, n_ctx=%d)", model_path, profile.name if hasattr(profile, "name") else type(profile).__name__, n_ctx or profile.n_ctx_default)
         kwargs = dict(
             model_path=model_path,
             n_ctx=n_ctx or profile.n_ctx_default,
@@ -43,11 +52,11 @@ class Generator:
         if profile.chat_format:
             kwargs["chat_format"] = profile.chat_format
         self._llm = Llama(**kwargs)
+        logger.info("Model loaded successfully")
 
     @staticmethod
     def _strip_thinking(text: str) -> str:
         """Strip Gemma 4 thinking channel tokens from output."""
-        import re
         # If there's a response channel after thinking, extract it
         response_match = re.search(r"<\|channel>response\n(.*?)(?:<channel\|>|$)", text, flags=re.DOTALL)
         if response_match:

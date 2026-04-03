@@ -1,11 +1,13 @@
+import hmac
+import logging
 import tempfile
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request, UploadFile
+from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.config import detect_language, settings
 from src.embedder import Embedder
@@ -16,20 +18,22 @@ from src.query import query_brain
 from src.reranker import Reranker
 from src.store import VectorStore
 
+logger = logging.getLogger(__name__)
+
 
 class QueryRequest(BaseModel):
-    question: str
+    question: str = Field(..., max_length=10000)
 
 
 class ChatRequest(BaseModel):
-    message: str
-    system: str = ""
+    message: str = Field(..., max_length=10000)
+    system: str = Field("", max_length=5000)
 
 
 class TranslateRequest(BaseModel):
-    text: str
-    source: str = ""
-    target: str = ""
+    text: str = Field(..., max_length=10000)
+    source: str = Field("", max_length=50)
+    target: str = Field("", max_length=50)
 
 
 _start_time: float = 0.0
@@ -47,6 +51,7 @@ def create_app(
     async def lifespan(app: FastAPI):
         global _start_time
         _start_time = time.time()
+        logger.info("Starting VoxEdge (profile=%s, mode=%s)", settings.model_profile, settings.mode)
 
         if app.state.generator is None:
             profile = get_profile(settings.model_profile)
@@ -72,6 +77,7 @@ def create_app(
             if corpus_dir.exists():
                 existing_docs = {d["source_file"] for d in app.state.store.list_documents()}
                 supported = {".txt", ".md", ".pdf", ".docx", ".doc", ".pptx", ".xlsx"}
+                ingested_count = 0
                 for f in sorted(corpus_dir.iterdir()):
                     if f.is_file() and f.suffix.lower() in supported and f.name not in existing_docs:
                         ingest_file(
@@ -79,6 +85,8 @@ def create_app(
                             chunk_size=settings.chunk_size,
                             chunk_overlap=settings.chunk_overlap,
                         )
+                        ingested_count += 1
+                logger.info("Corpus ingestion complete: %d new file(s) ingested", ingested_count)
 
         yield
 
@@ -98,13 +106,13 @@ def create_app(
             if request.url.path == "/health":
                 return await call_next(request)
             auth = request.headers.get("authorization", "")
-            if auth != f"Bearer {settings.api_key}":
+            if not hmac.compare_digest(auth, f"Bearer {settings.api_key}"):
+                logger.warning("Auth failure: invalid or missing API key for %s", request.url.path)
                 return JSONResponse(status_code=401, content={"detail": "Invalid or missing API key"})
             return await call_next(request)
 
     def _require_rag():
         if settings.mode != "full":
-            from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="RAG endpoints not available in chat mode. Set EDGE_MODE=full to enable.")
 
     @app.get("/health")
@@ -223,15 +231,17 @@ def create_app(
                 content = await upload.read()
                 tmp.write(content)
                 tmp_path = Path(tmp.name)
-            result = ingest_file(
-                path=tmp_path,
-                embedder=app.state.embedder,
-                store=app.state.store,
-                chunk_size=settings.chunk_size,
-                chunk_overlap=settings.chunk_overlap,
-                source_name=upload.filename,
-            )
-            tmp_path.unlink()
+            try:
+                result = ingest_file(
+                    path=tmp_path,
+                    embedder=app.state.embedder,
+                    store=app.state.store,
+                    chunk_size=settings.chunk_size,
+                    chunk_overlap=settings.chunk_overlap,
+                    source_name=upload.filename,
+                )
+            finally:
+                tmp_path.unlink(missing_ok=True)
             results.append({
                 "file": upload.filename or tmp_path.name,
                 "chunks": result.chunks,

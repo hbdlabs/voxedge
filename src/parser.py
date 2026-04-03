@@ -1,6 +1,9 @@
 import json
+import logging
 import subprocess
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 _PLAINTEXT_EXTENSIONS = {".txt", ".md", ".text", ".markdown"}
@@ -24,8 +27,10 @@ def parse_file(path: Path) -> str:
         raise FileNotFoundError(f"File not found: {path}")
 
     if path.suffix.lower() in _PLAINTEXT_EXTENSIONS:
+        logger.info("Parsing %s (method=plaintext)", path.name)
         return path.read_text(encoding="utf-8")
 
+    logger.info("Parsing %s (method=liteparse)", path.name)
     return _parse_with_liteparse(path)
 
 
