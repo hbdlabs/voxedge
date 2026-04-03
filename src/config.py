@@ -12,6 +12,7 @@ def detect_language(text: str) -> str:
 
 class Settings(BaseSettings):
     model_path: str = "/data/models/tiny-aya-global-q4_k_m.gguf"
+    model_profile: str = "aya"
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     reranker_model: str = "jinaai/jina-reranker-v2-base-multilingual"
     chunk_size: int = 250
@@ -22,6 +23,7 @@ class Settings(BaseSettings):
     qdrant_dir: str = "/data/qdrant"
     max_tokens: int = 100
     local_language: str = "Norwegian"
+    cache_dir: str = ""  # If set, FastEmbed/reranker models cached here
     host: str = "0.0.0.0"
     port: int = 8080
     n_ctx: int = 4096

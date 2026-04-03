@@ -25,6 +25,9 @@ htmlcov/
 # Qdrant Edge storage (runtime data)
 /data/qdrant/
 
+# Internal design docs
+docs/superpowers/
+
 # IDE
 .vscode/
 .idea/

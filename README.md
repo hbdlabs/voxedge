@@ -54,13 +54,17 @@ The embedding model and the LLM are multilingual regardless of which reranker yo
 - **Grounded** -- answers cite their sources and the system refuses to answer when it has no relevant information
 - **Configurable** -- swap rerankers, adjust chunk size, tune retrieval thresholds, switch between full and chat mode
 
-### About Tiny Aya
+### Model profiles
 
-The language model is [Tiny Aya Global](https://huggingface.co/CohereLabs/tiny-aya-global) (3.35B parameters) by [Cohere Labs](https://cohere.com/research/aya). It supports 70+ languages and is part of the Aya open-science initiative. We run the Q4_K_M quantized version (2.1 GB) on CPU via llama-cpp-python.
+The LLM is swappable via model profiles. Each profile defines the prompt templates, generation parameters, and inference settings for a specific model. Switch models by changing one Dockerfile and one env var (`EDGE_MODEL_PROFILE`).
 
-It comes in regional variants (global, earth, water, fire). We use **global** for balanced performance across all languages. Strong at translation and generation, weaker at math and reasoning — well suited for RAG where answers come from retrieved context.
+Two profiles are included:
 
-Licensed CC-BY-NC (non-commercial). Commercial use requires contacting Cohere.
+**Gemma 4 E2B** (`EDGE_MODEL_PROFILE=gemma`) — [Google's Gemma 4](https://huggingface.co/google/gemma-4-E2B-it) (2.3B effective parameters, 5.1B total). 35+ languages, 8K context, Apache 2.0 licensed (commercial use OK). Produces clean, precise answers. We run the Q4_K_M quantized GGUF (3.1 GB) via llama-cpp-python.
+
+**Tiny Aya Global** (`EDGE_MODEL_PROFILE=aya`) — [Cohere Labs' Tiny Aya](https://huggingface.co/CohereLabs/tiny-aya-global) (3.35B parameters). 70+ languages, 8K context, CC-BY-NC licensed (non-commercial). Part of the Aya open-science initiative. We run the Q4_K_M quantized GGUF (2.1 GB).
+
+Separate Dockerfiles are provided for each model in `deploy/docker/`. The root Dockerfile defaults to Aya for backward compatibility.
 
 ### Stack
 
@@ -70,7 +74,7 @@ Licensed CC-BY-NC (non-commercial). Commercial use requires contacting Cohere.
 | Text embedding | FastEmbed (ONNX) | Convert text to 384-dim multilingual vectors |
 | Vector storage | Qdrant Edge | Store and search vectors locally on disk |
 | Reranking | FastEmbed Cross-Encoder (ONNX) | Precision-filter retrieved chunks |
-| Generation | llama-cpp-python + Tiny Aya 3.35B (GGUF) | Generate multilingual answers on CPU |
+| Generation | llama-cpp-python (GGUF) | Run LLM locally on CPU (Gemma 4 or Tiny Aya) |
 | API | FastAPI | HTTP endpoints for query, ingest, chat, translate, info, health |
 
 For detailed component descriptions and data flow diagrams, see [docs/architecture.md](docs/architecture.md).
@@ -166,7 +170,13 @@ Startup takes 15-30 seconds in full mode (loading all models + indexing corpus),
 # Optionally place documents in data/corpus/ before building
 cp your_documents/*.pdf data/corpus/
 
-# Build the image (~10 min first time, downloads 2.1 GB model)
+# Build with Gemma 4 (Apache 2.0, commercial OK)
+docker build -f deploy/docker/Dockerfile.gemma -t voxedge .
+
+# Build with Tiny Aya (CC-BY-NC, more languages)
+docker build -f deploy/docker/Dockerfile.aya -t voxedge .
+
+# Or use root Dockerfile (defaults to Aya)
 docker build -t voxedge .
 ```
 
@@ -194,17 +204,24 @@ The volume mount (`-v voxedge-data:/data/qdrant`) persists the vector index acro
 
 ```bash
 curl http://localhost:8080/health
+# Check which model profile is active
+curl http://localhost:8080/info
 ```
 
 ## Fly.io Deployment
 
-Two fly configs are provided. Performance CPUs are required — shared CPUs cannot run the 3.35B LLM within HTTP timeouts.
+Performance CPUs are required — shared CPUs cannot run LLM inference within HTTP timeouts.
 
-**Full mode** (performance 4-core, 8 GB, persistent volume for vector storage):
+**Full mode** (performance 4-core, 8 GB, persistent volume):
 ```bash
 fly apps create voxedge
 fly volumes create voxedge_data --region arn --size 5
-fly deploy --config deploy/fly/fly.full.toml --remote-only
+
+# With Gemma 4
+fly deploy --config deploy/fly/fly.full.toml --dockerfile deploy/docker/Dockerfile.gemma --remote-only
+
+# With Tiny Aya
+fly deploy --config deploy/fly/fly.full.toml --dockerfile deploy/docker/Dockerfile.aya --remote-only
 ```
 
 **Chat mode** (performance 2-core, 8 GB, no volume needed):
@@ -213,7 +230,7 @@ fly apps create voxedge
 fly deploy --config deploy/fly/fly.chat.toml --remote-only
 ```
 
-First startup takes 3-5 minutes (downloading embedding and reranker models). Subsequent starts are faster if using a persistent volume with `HF_HOME` set (models are cached).
+First startup takes 6-8 minutes (loading LLM, downloading embedding and reranker models). Subsequent starts are faster when using `EDGE_CACHE_DIR` on a persistent volume.
 
 ## Kubernetes Deployment
 
@@ -296,25 +313,31 @@ sudo usermod -aG docker $USER
 # Log out and back in
 ```
 
-**Pull from registry:**
+**Build the image with your chosen model profile:**
 ```bash
+# Gemma 4 (Apache 2.0, needs 8 GB Pi)
+docker build -f deploy/docker/Dockerfile.gemma -t voxedge .
+
+# Tiny Aya (CC-BY-NC, fits on 4 GB Pi)
+docker build -f deploy/docker/Dockerfile.aya -t voxedge .
+```
+
+**Transfer to the Pi** (via registry or USB):
+```bash
+# Option A: registry
+docker push ghcr.io/YOUR_USER/voxedge:latest
+# On the Pi:
 docker pull ghcr.io/YOUR_USER/voxedge:latest
-docker run -d -p 8080:8080 -v edge-data:/data/qdrant ghcr.io/YOUR_USER/voxedge:latest
-```
+docker run -d -p 8080:8080 -v voxedge-data:/data/qdrant ghcr.io/YOUR_USER/voxedge:latest
 
-**Transfer image file (air-gapped):**
-```bash
-# On build machine:
+# Option B: air-gapped (USB stick)
 docker save voxedge | gzip > voxedge.tar.gz
-# Transfer to Pi via USB stick or scp, then:
+# On the Pi:
 docker load < voxedge.tar.gz
-docker run -d -p 8080:8080 -v edge-data:/data/qdrant voxedge
+docker run -d -p 8080:8080 -v voxedge-data:/data/qdrant voxedge
 ```
 
-**Hardware notes:**
-- Raspberry Pi 5 (8 GB): runs well, queries take 5-15 seconds
-- Raspberry Pi 4 (4 GB): functional but tight on RAM, use swap
-- Raspberry Pi 4 (2 GB): not recommended
+Check which profile is running with `curl http://PI_IP:8080/info`.
 
 ## API Reference
 
@@ -647,10 +670,11 @@ Before ingesting, review what gets extracted:
 
 ## Licensing
 
+- **Gemma 4 E2B** (Google): Apache 2.0 (commercial use OK)
 - **Tiny Aya Global** (CohereLabs): CC-BY-NC-4.0 (non-commercial)
 - **Jina Reranker v2** (Jina AI): CC-BY-NC-4.0 (non-commercial)
 - **FastEmbed models**: Apache 2.0
 - **Qdrant Edge**: Apache 2.0
 - **LiteParse**: MIT
 
-The code in this repository is MIT licensed. When deploying with the default models, the CC-BY-NC restriction applies to the overall system. See [LICENSE](LICENSE) for details.
+The code in this repository is MIT licensed. Deploying with Gemma 4 + the English reranker gives a fully permissive commercial stack. Deploying with Tiny Aya or the Jina multilingual reranker adds CC-BY-NC restrictions. See [LICENSE](LICENSE) for details.

@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from src.config import detect_language, settings
 from src.embedder import Embedder
 from src.generator import Generator
+from src.profiles import get_profile
 from src.ingest import ingest_file
 from src.query import query_brain
 from src.reranker import Reranker
@@ -48,21 +49,23 @@ def create_app(
         _start_time = time.time()
 
         if app.state.generator is None:
+            profile = get_profile(settings.model_profile)
             app.state.generator = Generator(
                 model_path=settings.model_path,
+                profile=profile,
                 n_ctx=settings.n_ctx,
                 n_threads=settings.n_threads,
             )
 
         if settings.mode == "full":
             if app.state.embedder is None:
-                app.state.embedder = Embedder(model_name=settings.embedding_model)
+                app.state.embedder = Embedder(model_name=settings.embedding_model, cache_dir=settings.cache_dir or None)
             if app.state.store is None:
                 app.state.store = VectorStore(
                     path=settings.qdrant_dir, vector_size=384
                 )
             if app.state.reranker is None:
-                app.state.reranker = Reranker(model_name=settings.reranker_model)
+                app.state.reranker = Reranker(model_name=settings.reranker_model, cache_dir=settings.cache_dir or None)
 
             # Ingest baked-in corpus (only new files)
             corpus_dir = Path(settings.corpus_dir)
@@ -118,6 +121,7 @@ def create_app(
     def info():
         result = {
             "mode": settings.mode,
+            "model_profile": settings.model_profile,
             "models": {
                 "llm": settings.model_path,
                 "llm_context": settings.n_ctx,
