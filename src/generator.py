@@ -42,6 +42,17 @@ class Generator:
             chat_format=profile.chat_format,
         )
 
+    @staticmethod
+    def _strip_thinking(text: str) -> str:
+        """Strip Gemma 4 thinking channel tokens from output."""
+        import re
+        # Remove <|channel>thought\n...<channel|> blocks
+        text = re.sub(r"<\|channel>thought\n.*?<channel\|>", "", text, flags=re.DOTALL)
+        # Remove any remaining channel tags
+        text = re.sub(r"<\|channel>[^<]*", "", text)
+        text = re.sub(r"<channel\|>", "", text)
+        return text.strip()
+
     def _complete(self, prompt: str, max_tokens: int, temperature: float,
                   repeat_penalty: float, stop: list[str]) -> str:
         """Route to chat API or completion API based on profile."""
@@ -54,7 +65,8 @@ class Generator:
                 top_p=0.9,
                 repeat_penalty=repeat_penalty,
             )
-            return result["choices"][0]["message"]["content"].strip()
+            text = result["choices"][0]["message"]["content"].strip()
+            return self._strip_thinking(text)
         else:
             result = self._llm.create_completion(
                 prompt=prompt,
