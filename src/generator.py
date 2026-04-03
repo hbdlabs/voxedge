@@ -66,7 +66,8 @@ class Generator:
                 repeat_penalty=repeat_penalty,
             )
             text = result["choices"][0]["message"]["content"].strip()
-            return self._strip_thinking(text)
+            cleaned = self._strip_thinking(text)
+            return cleaned if cleaned else text  # fallback to raw if stripping removes everything
         else:
             result = self._llm.create_completion(
                 prompt=prompt,
