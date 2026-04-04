@@ -1,0 +1,18 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: voxedge
+  namespace: voxedge
+  labels:
+    app.kubernetes.io/part-of: voxedge
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: voxedge
+                port:
+                  number: 8080
