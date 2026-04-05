@@ -60,6 +60,16 @@ sudo k3s ctr images import voxedge-gemma.tar
 
 For Tiny Aya, replace `Dockerfile.gemma` with `Dockerfile.aya` and `gemma` with `aya` in all commands.
 
+## Configure Traefik timeouts
+
+LLM inference and document embedding can take several minutes on ARM. Traefik's default timeouts (60s) will drop long-running requests to `/ingest` and `/query`. Apply the timeout config before deploying VoxEdge:
+
+```bash
+sudo cp deploy/k8s/traefik-config.yaml /var/lib/rancher/k3s/server/manifests/
+```
+
+K3s watches this directory and applies changes automatically. Traefik will restart with 600s timeouts.
+
 ## Deploy
 
 Edit `kustomization.yaml` to uncomment the desired profile (Gemma is the default), then:
