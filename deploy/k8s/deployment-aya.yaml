@@ -27,6 +27,8 @@ spec:
           env:
             - name: EDGE_MODEL_PROFILE
               value: "aya"
+            - name: EDGE_CACHE_DIR
+              value: "/data/qdrant/model_cache"
           resources:
             requests:
               cpu: "4"
@@ -47,11 +49,15 @@ spec:
               path: /health
               port: 8080
             periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 10
           readinessProbe:
             httpGet:
               path: /health
               port: 8080
             periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 10
       volumes:
         - name: qdrant-storage
           persistentVolumeClaim:

@@ -31,12 +31,14 @@ spec:
               value: "/data/models/gemma-4-e2b-q4_k_m.gguf"
             - name: EDGE_N_CTX
               value: "8192"
+            - name: EDGE_CACHE_DIR
+              value: "/data/qdrant/model_cache"
           resources:
             requests:
               cpu: "4"
               memory: "4Gi"
             limits:
-              memory: "6Gi"
+              memory: "8Gi"
           volumeMounts:
             - name: qdrant-storage
               mountPath: /data/qdrant
@@ -51,11 +53,15 @@ spec:
               path: /health
               port: 8080
             periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 10
           readinessProbe:
             httpGet:
               path: /health
               port: 8080
             periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 10
       volumes:
         - name: qdrant-storage
           persistentVolumeClaim:
