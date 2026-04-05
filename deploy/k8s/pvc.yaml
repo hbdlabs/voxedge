@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: voxedge-qdrant
+  namespace: voxedge
+  labels:
+    app.kubernetes.io/part-of: voxedge
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

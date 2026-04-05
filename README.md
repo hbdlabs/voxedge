@@ -162,182 +162,64 @@ uvicorn src.main:app --host 127.0.0.1 --port 8080
 
 Startup takes 15-30 seconds in full mode (loading all models + indexing corpus), 5-10 seconds in chat mode (loading LLM only).
 
-## Docker Deployment
+## Deployment
 
-### Build
+Three deployment paths, pick the one that fits:
 
-```bash
-# Optionally place documents in data/corpus/ before building
-cp your_documents/*.pdf data/corpus/
+| Path | Best for | Config |
+|---|---|---|
+| **Raspberry Pi / K3s** | Kiosks, edge devices, offline | [`deploy/k8s/`](deploy/k8s/) |
+| **Fly.io** | Cloud, public-facing, auto-suspend | [`deploy/fly/`](deploy/fly/) |
+| **Docker** | Local testing, laptops, simple setups | [`deploy/docker/`](deploy/docker/) |
 
-# Build with Gemma 4 (Apache 2.0, commercial OK)
-docker build -f deploy/docker/Dockerfile.gemma -t voxedge .
-
-# Build with Tiny Aya (CC-BY-NC, more languages)
-docker build -f deploy/docker/Dockerfile.aya -t voxedge .
-
-# Or use root Dockerfile (defaults to Aya)
-docker build -t voxedge .
-```
-
-### Run
+All paths use the same Docker images. Choose a model profile per image:
 
 ```bash
-# Full mode
-docker run -d \
-  --name voxedge \
-  -p 8080:8080 \
-  -v voxedge-data:/data/qdrant \
-  voxedge
+# Gemma 4 (Apache 2.0, commercial OK, 3.1 GB)
+docker build -f deploy/docker/Dockerfile.gemma -t voxedge:gemma .
 
-# Chat mode
-docker run -d \
-  --name voxedge \
-  -p 8080:8080 \
-  -e EDGE_MODE=chat \
-  voxedge
+# Tiny Aya (CC-BY-NC, 70+ languages, 2.1 GB)
+docker build -f deploy/docker/Dockerfile.aya -t voxedge:aya .
 ```
 
-The volume mount (`-v voxedge-data:/data/qdrant`) persists the vector index across container restarts. Not needed in chat mode.
+### Raspberry Pi / K3s (recommended for kiosks)
 
-### Verify
+Self-healing, declarative config, health monitoring. See [`deploy/k8s/README.md`](deploy/k8s/README.md) for the full guide (air-gapped install, SSD storage, fleet management).
 
 ```bash
-curl http://localhost:8080/health
-# Check which model profile is active
-curl http://localhost:8080/info
+curl -sfL https://get.k3s.io | sh -
+sudo cp deploy/k8s/traefik-config.yaml /var/lib/rancher/k3s/server/manifests/
+kubectl apply -k deploy/k8s/
 ```
 
-## Fly.io Deployment
+### Fly.io
 
-Performance CPUs are required — shared CPUs cannot run LLM inference within HTTP timeouts.
+Performance CPUs required -- shared CPUs cannot run LLM inference within HTTP timeouts.
 
-**Full mode** (performance 4-core, 8 GB, persistent volume):
 ```bash
 fly apps create voxedge
 fly volumes create voxedge_data --region arn --size 5
-
-# With Gemma 4
 fly deploy --config deploy/fly/fly.full.toml --dockerfile deploy/docker/Dockerfile.gemma --remote-only
-
-# With Tiny Aya
-fly deploy --config deploy/fly/fly.full.toml --dockerfile deploy/docker/Dockerfile.aya --remote-only
 ```
 
-**Chat mode** (performance 2-core, 8 GB, no volume needed):
+Chat mode (no RAG, smaller machine): `fly deploy --config deploy/fly/fly.chat.toml --remote-only`
+
+First startup takes 6-8 minutes. Subsequent starts are faster with `EDGE_CACHE_DIR` on a persistent volume.
+
+### Docker
+
 ```bash
-fly apps create voxedge
-fly deploy --config deploy/fly/fly.chat.toml --remote-only
+docker run -d --name voxedge -p 8080:8080 -v voxedge-data:/data/qdrant voxedge:gemma
 ```
 
-First startup takes 6-8 minutes (loading LLM, downloading embedding and reranker models). Subsequent starts are faster when using `EDGE_CACHE_DIR` on a persistent volume.
+Chat mode: add `-e EDGE_MODE=chat`. Volume mount not needed in chat mode.
 
-## Kubernetes Deployment
+### Verify (all paths)
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: edge-rag-kiosk
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: edge-rag-kiosk
-  template:
-    metadata:
-      labels:
-        app: edge-rag-kiosk
-    spec:
-      containers:
-      - name: brain
-        image: voxedge:latest
-        ports:
-        - containerPort: 8080
-        resources:
-          requests:
-            memory: "4Gi"
-            cpu: "4"
-          limits:
-            memory: "6Gi"
-        volumeMounts:
-        - name: qdrant-storage
-          mountPath: /data/qdrant
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 60
-          periodSeconds: 30
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 60
-      volumes:
-      - name: qdrant-storage
-        persistentVolumeClaim:
-          claimName: voxedge-pvc
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: edge-rag-kiosk
-spec:
-  ports:
-  - port: 8080
-  selector:
-    app: edge-rag-kiosk
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: voxedge-pvc
-spec:
-  accessModes: ["ReadWriteOnce"]
-  resources:
-    requests:
-      storage: 1Gi
-```
-
-Set `initialDelaySeconds: 60` on probes to allow time for model loading and corpus ingestion.
-
-## Raspberry Pi Deployment
-
-The Docker image is built for `arm64`, compatible with Raspberry Pi 4/5 (64-bit OS).
-
-**Install Docker on the Pi** (one-time):
 ```bash
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-# Log out and back in
+curl http://localhost:8080/health
+curl http://localhost:8080/info
 ```
-
-**Build the image with your chosen model profile:**
-```bash
-# Gemma 4 (Apache 2.0, needs 8 GB Pi)
-docker build -f deploy/docker/Dockerfile.gemma -t voxedge .
-
-# Tiny Aya (CC-BY-NC, fits on 4 GB Pi)
-docker build -f deploy/docker/Dockerfile.aya -t voxedge .
-```
-
-**Transfer to the Pi** (via registry or USB):
-```bash
-# Option A: registry
-docker push ghcr.io/YOUR_USER/voxedge:latest
-# On the Pi:
-docker pull ghcr.io/YOUR_USER/voxedge:latest
-docker run -d -p 8080:8080 -v voxedge-data:/data/qdrant ghcr.io/YOUR_USER/voxedge:latest
-
-# Option B: air-gapped (USB stick)
-docker save voxedge | gzip > voxedge.tar.gz
-# On the Pi:
-docker load < voxedge.tar.gz
-docker run -d -p 8080:8080 -v voxedge-data:/data/qdrant voxedge
-```
-
-Check which profile is running with `curl http://PI_IP:8080/info`.
 
 ## API Reference
 

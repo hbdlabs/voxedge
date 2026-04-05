@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voxedge
+  namespace: voxedge
+  labels:
+    app: voxedge
+    app.kubernetes.io/part-of: voxedge
+    voxedge/profile: gemma
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voxedge
+  template:
+    metadata:
+      labels:
+        app: voxedge
+        voxedge/profile: gemma
+    spec:
+      containers:
+        - name: voxedge
+          image: voxedge:gemma
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: EDGE_MODEL_PROFILE
+              value: "gemma"
+            - name: EDGE_MODEL_PATH
+              value: "/data/models/gemma-4-e2b-q4_k_m.gguf"
+            - name: EDGE_N_CTX
+              value: "8192"
+            - name: EDGE_CACHE_DIR
+              value: "/data/qdrant/model_cache"
+          resources:
+            requests:
+              cpu: "4"
+              memory: "4Gi"
+            limits:
+              memory: "8Gi"
+          volumeMounts:
+            - name: qdrant-storage
+              mountPath: /data/qdrant
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            failureThreshold: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 10
+      volumes:
+        - name: qdrant-storage
+          persistentVolumeClaim:
+            claimName: voxedge-qdrant
