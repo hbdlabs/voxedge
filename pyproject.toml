@@ -1,6 +1,6 @@
 [project]
 name = "voxedge"
-version = "0.6.1"
+version = "0.6.5"
 description = "Multilingual AI that runs anywhere, without internet"
 requires-python = ">=3.11"
 license = {text = "MIT"}

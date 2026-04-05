@@ -232,75 +232,29 @@ fly deploy --config deploy/fly/fly.chat.toml --remote-only
 
 First startup takes 6-8 minutes (loading LLM, downloading embedding and reranker models). Subsequent starts are faster when using `EDGE_CACHE_DIR` on a persistent volume.
 
-## Kubernetes Deployment
+## Kubernetes / K3s Deployment
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: edge-rag-kiosk
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: edge-rag-kiosk
-  template:
-    metadata:
-      labels:
-        app: edge-rag-kiosk
-    spec:
-      containers:
-      - name: brain
-        image: voxedge:latest
-        ports:
-        - containerPort: 8080
-        resources:
-          requests:
-            memory: "4Gi"
-            cpu: "4"
-          limits:
-            memory: "6Gi"
-        volumeMounts:
-        - name: qdrant-storage
-          mountPath: /data/qdrant
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 60
-          periodSeconds: 30
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 60
-      volumes:
-      - name: qdrant-storage
-        persistentVolumeClaim:
-          claimName: voxedge-pvc
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: edge-rag-kiosk
-spec:
-  ports:
-  - port: 8080
-  selector:
-    app: edge-rag-kiosk
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: voxedge-pvc
-spec:
-  accessModes: ["ReadWriteOnce"]
-  resources:
-    requests:
-      storage: 1Gi
+Production-ready K8s manifests are provided in [`deploy/k8s/`](deploy/k8s/). These work on any Kubernetes cluster and include dedicated setup instructions for K3s on Raspberry Pi.
+
+```bash
+# Install K3s (Raspberry Pi or any Linux)
+curl -sfL https://get.k3s.io | sh -
+
+# Configure Traefik timeouts for LLM inference
+sudo cp deploy/k8s/traefik-config.yaml /var/lib/rancher/k3s/server/manifests/
+
+# Deploy (Gemma profile enabled by default)
+kubectl apply -k deploy/k8s/
 ```
 
-Set `initialDelaySeconds: 60` on probes to allow time for model loading and corpus ingestion.
+The manifests include:
+- Namespace, Service, PVC, Ingress, and per-profile Deployments (Gemma / Aya)
+- Startup probe with 5-minute window for model loading on ARM
+- Tolerant liveness/readiness probes for sync inference endpoints
+- `EDGE_CACHE_DIR` on persistent volume for offline restarts
+- Traefik timeout config for long-running `/ingest` and `/query` requests
+
+See [`deploy/k8s/README.md`](deploy/k8s/README.md) for the full setup guide including air-gapped deployment, SSD storage, profile switching, and fleet management upgrade paths.
 
 ## Raspberry Pi Deployment
 
