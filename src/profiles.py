@@ -17,6 +17,11 @@ class ModelProfile:
     n_ctx_default: int = 4096
     patches: list[str] = field(default_factory=list)
     use_chat_api: bool = False  # If True, use create_chat_completion instead of create_completion
+    # Runtime placement — defaults match today's CPU-only Pi path.
+    backend: str = "llama_cpu"  # llama_cpu | llama_metal | llama_cuda
+    embedder_device: str = "cpu"  # cpu | cuda
+    reranker_device: str = "cpu"  # cpu | cuda
+    n_gpu_layers: int = 0  # 0 = CPU only, -1 = offload all layers
 
 
 AYA = ModelProfile(
