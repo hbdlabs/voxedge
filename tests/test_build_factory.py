@@ -80,3 +80,18 @@ def test_default_profiles_have_cpu_runtime_fields():
         assert p.embedder_device == "cpu"
         assert p.reranker_device == "cpu"
         assert p.n_gpu_layers == 0
+
+
+def test_gemma_metal_profile():
+    """gemma-metal offloads all layers, embedder/reranker stay on CPU."""
+    from src.profiles import get_profile
+    p = get_profile("gemma-metal")
+    assert p.backend == "llama_metal"
+    assert p.n_gpu_layers == -1
+    assert p.embedder_device == "cpu"
+    assert p.reranker_device == "cpu"
+    # Prompt templates and stops must match gemma — only runtime differs.
+    from src.profiles import GEMMA
+    assert p.rag_template == GEMMA.rag_template
+    assert p.chat_template == GEMMA.chat_template
+    assert p.translate_template == GEMMA.translate_template

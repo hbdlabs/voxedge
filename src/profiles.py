@@ -81,9 +81,24 @@ GEMMA = ModelProfile(
     use_chat_api=True,
 )
 
+from dataclasses import replace as _replace
+
+# Mac dev dress rehearsal for the GPU profile. Same Gemma 4 GGUF, but
+# offloads every layer to the Apple GPU via llama.cpp's Metal backend.
+# Requires llama-cpp-python built with -DGGML_METAL=on; the default
+# Apple Silicon wheel already includes Metal support.
+GEMMA_METAL = _replace(
+    GEMMA,
+    name="gemma-metal",
+    backend="llama_metal",
+    n_gpu_layers=-1,
+)
+
+
 PROFILES = {
     "aya": AYA,
     "gemma": GEMMA,
+    "gemma-metal": GEMMA_METAL,
 }
 
 

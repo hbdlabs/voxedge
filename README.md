@@ -58,11 +58,13 @@ The embedding model and the LLM are multilingual regardless of which reranker yo
 
 The LLM is swappable via model profiles. Each profile defines the prompt templates, generation parameters, and inference settings for a specific model. Switch models by changing one Dockerfile and one env var (`EDGE_MODEL_PROFILE`).
 
-Two profiles are included:
+Three profiles are included:
 
 **Gemma 4 E2B** (`EDGE_MODEL_PROFILE=gemma`) — [Google's Gemma 4](https://huggingface.co/google/gemma-4-E2B-it) (2.3B effective parameters, 5.1B total). 35+ languages, 8K context, Apache 2.0 licensed (commercial use OK). Produces clean, precise answers. We run the Q4_K_M quantized GGUF (3.1 GB) via llama-cpp-python.
 
 **Tiny Aya Global** (`EDGE_MODEL_PROFILE=aya`) — [Cohere Labs' Tiny Aya](https://huggingface.co/CohereLabs/tiny-aya-global) (3.35B parameters). 70+ languages, 8K context, CC-BY-NC licensed (non-commercial). Part of the Aya open-science initiative. We run the Q4_K_M quantized GGUF (2.1 GB).
+
+**Gemma 4 E2B — Metal** (`EDGE_MODEL_PROFILE=gemma-metal`) — same Gemma 4 weights, but offloaded to the Apple GPU via llama.cpp's Metal backend. For local development on Apple Silicon. The default `llama-cpp-python` wheel on Apple Silicon already includes Metal support; if you built without it, reinstall with `CMAKE_ARGS="-DGGML_METAL=on" pip install --force-reinstall --no-cache-dir llama-cpp-python`.
 
 Separate Dockerfiles are provided for each model in `deploy/docker/`. The root Dockerfile defaults to Aya for backward compatibility.
 
