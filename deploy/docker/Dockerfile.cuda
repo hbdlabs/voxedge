@@ -1,0 +1,71 @@
+# VoxEdge GPU-accelerated image. Same Gemma 4 E2B Q4 model as Dockerfile.gemma,
+# but llama-cpp-python is rebuilt with CUDA support and onnxruntime-gpu is
+# installed so FastEmbed can push the embedder and reranker to the GPU.
+#
+# Multi-stage: the builder compiles llama-cpp-python against CUDA (multi-minute,
+# large intermediate layer); the runtime image copies only the installed wheel.
+
+ARG CUDA_IMAGE=nvcr.io/nvidia/cuda:12.6.3-devel-ubuntu24.04
+ARG CUDA_RUNTIME_IMAGE=nvcr.io/nvidia/cuda:12.6.3-runtime-ubuntu24.04
+
+FROM ${CUDA_IMAGE} AS builder
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3.11 python3.11-venv python3-pip build-essential cmake git curl && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3.11 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+RUN pip install --upgrade pip wheel
+
+# Rebuild llama-cpp-python with CUDA kernels compiled in. Pinned version
+# matches the range in pyproject.toml.
+ENV CMAKE_ARGS="-DGGML_CUDA=on"
+ENV FORCE_CMAKE=1
+RUN pip install --no-cache-dir "llama-cpp-python>=0.3.20"
+
+# GPU execution provider for FastEmbed (embedder + reranker).
+RUN pip install --no-cache-dir "onnxruntime-gpu"
+
+WORKDIR /app
+COPY pyproject.toml .
+COPY src/ src/
+RUN pip install --no-cache-dir "."
+
+
+FROM ${CUDA_RUNTIME_IMAGE}
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3.11 curl unzip libreoffice-core libreoffice-writer libreoffice-calc libreoffice-impress && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:/opt/venv/bin:$PATH"
+
+RUN bun install -g @llamaindex/liteparse
+
+ENV VIRTUAL_ENV=/opt/venv
+COPY --from=builder /opt/venv /opt/venv
+
+WORKDIR /app
+COPY pyproject.toml .
+COPY src/ src/
+
+ENV EDGE_MODEL_PROFILE=gemma-cuda
+ENV EDGE_MODEL_PATH=/data/models/gemma-4-e2b-q4_k_m.gguf
+ENV EDGE_N_CTX=8192
+# gemma-cuda defaults to the Jina multilingual reranker — VRAM is plentiful
+# and it handles non-English corpora correctly.
+ENV EDGE_RERANKER_MODEL=jinaai/jina-reranker-v2-base-multilingual
+
+RUN mkdir -p /data/models && \
+    curl -L -o /data/models/gemma-4-e2b-q4_k_m.gguf \
+    "https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf"
+
+COPY data/corpus/ /data/corpus/
+RUN mkdir -p /data/qdrant
+
+EXPOSE 8080
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8080"]

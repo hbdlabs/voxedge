@@ -17,6 +17,11 @@ class ModelProfile:
     n_ctx_default: int = 4096
     patches: list[str] = field(default_factory=list)
     use_chat_api: bool = False  # If True, use create_chat_completion instead of create_completion
+    # Runtime placement — defaults match today's CPU-only Pi path.
+    backend: str = "llama_cpu"  # llama_cpu | llama_metal | llama_cuda
+    embedder_device: str = "cpu"  # cpu | cuda
+    reranker_device: str = "cpu"  # cpu | cuda
+    n_gpu_layers: int = 0  # 0 = CPU only, -1 = offload all layers
 
 
 AYA = ModelProfile(
@@ -76,9 +81,39 @@ GEMMA = ModelProfile(
     use_chat_api=True,
 )
 
+from dataclasses import replace as _replace
+
+# Mac dev dress rehearsal for the GPU profile. Same Gemma 4 GGUF, but
+# offloads every layer to the Apple GPU via llama.cpp's Metal backend.
+# Requires llama-cpp-python built with -DGGML_METAL=on; the default
+# Apple Silicon wheel already includes Metal support.
+GEMMA_METAL = _replace(
+    GEMMA,
+    name="gemma-metal",
+    backend="llama_metal",
+    n_gpu_layers=-1,
+)
+
+
+# GPU-accelerated deployment. Same Gemma 4 GGUF, offloaded in full to an
+# NVIDIA GPU via llama.cpp CUDA. Embedder and reranker run on CUDA via
+# FastEmbed's cuda=True shortcut (CUDAExecutionProvider). Requires
+# llama-cpp-python built with -DGGML_CUDA=on and onnxruntime-gpu.
+GEMMA_CUDA = _replace(
+    GEMMA,
+    name="gemma-cuda",
+    backend="llama_cuda",
+    embedder_device="cuda",
+    reranker_device="cuda",
+    n_gpu_layers=-1,
+)
+
+
 PROFILES = {
     "aya": AYA,
     "gemma": GEMMA,
+    "gemma-metal": GEMMA_METAL,
+    "gemma-cuda": GEMMA_CUDA,
 }
 
 
