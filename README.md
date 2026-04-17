@@ -231,6 +231,31 @@ docker build -f deploy/docker/Dockerfile.cuda -t voxedge:cuda .
 docker run -d --gpus all -p 8080:8080 -v voxedge-data:/data/qdrant voxedge:cuda
 ```
 
+The same `Dockerfile.cuda` builds for both x86_64 (workstations, rentals) and ARM64 (DGX Spark). The NVIDIA CUDA base image, Python packages, and `pip install` of `llama-cpp-python` and `onnxruntime-gpu` all resolve to the correct architecture automatically — Docker picks the right layer from the multi-arch manifest, and pip downloads the right wheel.
+
+**DGX Spark (ARM64).** Build directly on the device — simplest path:
+
+```bash
+# on the Spark
+git clone https://github.com/hbdlabs/voxedge.git && cd voxedge && git checkout v0.7.0
+docker build -f deploy/docker/Dockerfile.cuda -t voxedge:cuda .
+docker run -d --gpus all -p 8080:8080 -v voxedge-data:/data/qdrant voxedge:cuda
+```
+
+The build takes longer on first run than on a 4090 (compiling `llama-cpp-python` CUDA kernels on Grace ARM64), but produces a Spark-native image. No separate Dockerfile, no code changes.
+
+**Central registry with multi-arch manifest.** If you publish voxedge from CI for a fleet that mixes x86_64 GPU boxes and Spark, build both architectures under one tag:
+
+```bash
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -f deploy/docker/Dockerfile.cuda \
+  -t yourregistry/voxedge:cuda \
+  --push .
+```
+
+Then any host — x86_64 workstation or Spark — can `docker pull yourregistry/voxedge:cuda` and Docker fetches the right architecture.
+
 **Kubernetes (GPU node with NVIDIA device plugin installed)**
 
 ```bash

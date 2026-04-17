@@ -129,7 +129,31 @@ earlier install.
 Fix: always `pip install --upgrade "llama-cpp-python>=0.3.20"` when
 moving between model generations.
 
-## 8. What Tier 3 actually validated
+## 8. Spark is ARM64, but the Dockerfile doesn't care
+
+DGX Spark's Grace CPU is ARM64; rental GPU boxes and most workstations
+are x86_64. `deploy/docker/Dockerfile.cuda` works on both without
+modification because:
+
+- `nvcr.io/nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04` is a
+  multi-arch manifest — Docker picks the x86_64 layer on x86_64 hosts
+  and the ARM64 layer on ARM64 hosts automatically.
+- `apt-get install python3.11 libreoffice …` pulls arch-matched
+  packages.
+- `pip install llama-cpp-python` with `CMAKE_ARGS="-DGGML_CUDA=on"`
+  compiles from source against whatever host it's running on.
+- `pip install onnxruntime-gpu` has published wheels for both
+  x86_64-CUDA and ARM64-CUDA; pip selects automatically.
+
+**No separate `Dockerfile.cuda.arm64`. No `TARGETARCH` branches.**
+
+To build for Spark: either `docker build -f deploy/docker/Dockerfile.cuda`
+directly on the Spark (simplest), or use
+`docker buildx build --platform linux/amd64,linux/arm64 … --push` once
+from any host to publish a multi-arch manifest to a registry that all
+your hosts pull from.
+
+## 9. What Tier 3 actually validated
 
 - ✅ Profile → backend → factory dispatch works end-to-end on CUDA.
 - ✅ `cuda=True` is accepted and requested for FastEmbed at the API
