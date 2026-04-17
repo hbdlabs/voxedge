@@ -52,29 +52,41 @@ The embedding model and the LLM are multilingual regardless of which reranker yo
 - **Multilingual** -- questions and documents can be in different languages (50+ for retrieval, 70+ for generation). Ask in Vietnamese, get answers from English documents.
 - **Self-contained** -- single Docker container with all models, vector database, document parser, and API server
 - **Grounded** -- answers cite their sources and the system refuses to answer when it has no relevant information
+- **Scales from Pi to GPU** -- same API and same model weights run on a $75 Raspberry Pi (CPU), a Mac (Metal), or an NVIDIA GPU / DGX Spark (CUDA). Only the deployment image changes.
 - **Configurable** -- swap rerankers, adjust chunk size, tune retrieval thresholds, switch between full and chat mode
 
 ### Model profiles
 
-The LLM is swappable via model profiles. Each profile defines the prompt templates, generation parameters, and inference settings for a specific model. Switch models by changing one Dockerfile and one env var (`EDGE_MODEL_PROFILE`).
+A **profile** bundles one model's prompt templates, generation parameters, and runtime placement (CPU, Metal, or CUDA) under one name. Switch profiles by setting `EDGE_MODEL_PROFILE` — one env var picks which model runs and where.
 
-Two profiles are included:
+Four profiles are included:
 
-**Gemma 4 E2B** (`EDGE_MODEL_PROFILE=gemma`) — [Google's Gemma 4](https://huggingface.co/google/gemma-4-E2B-it) (2.3B effective parameters, 5.1B total). 35+ languages, 8K context, Apache 2.0 licensed (commercial use OK). Produces clean, precise answers. We run the Q4_K_M quantized GGUF (3.1 GB) via llama-cpp-python.
+| Profile | Model | Hardware | Languages | License | Image |
+|---|---|---|---|---|---|
+| `gemma` | Gemma 4 E2B, Q4 GGUF (3.1 GB) | CPU | 35+ | Apache 2.0 (commercial OK) | `Dockerfile.gemma` (Pi) |
+| `aya` | Tiny Aya Global, Q4 GGUF (2.1 GB) | CPU | 70+ | CC-BY-NC (non-commercial) | `Dockerfile.aya` (Pi) |
+| `gemma-metal` | Gemma 4 E2B, Q4 GGUF | Apple GPU (Metal) | 35+ | Apache 2.0 | dev only, no Docker image |
+| `gemma-cuda` | Gemma 4 E2B, Q4 GGUF | NVIDIA GPU (CUDA) | 35+ | Apache 2.0 | `Dockerfile.cuda` |
 
-**Tiny Aya Global** (`EDGE_MODEL_PROFILE=aya`) — [Cohere Labs' Tiny Aya](https://huggingface.co/CohereLabs/tiny-aya-global) (3.35B parameters). 70+ languages, 8K context, CC-BY-NC licensed (non-commercial). Part of the Aya open-science initiative. We run the Q4_K_M quantized GGUF (2.1 GB).
+**All four profiles share the same GGUF model weights for their respective models — only the runtime placement differs.** A Pi deployment and a DGX Spark deployment run the same Gemma 4 E2B file; the Pi offloads nothing, the Spark offloads every layer.
 
-Separate Dockerfiles are provided for each model in `deploy/docker/`. The root Dockerfile defaults to Aya for backward compatibility.
+**`gemma` and `aya`** — the Pi path. Pure CPU inference via `llama-cpp-python`. Defaults to `EDGE_MAX_TOKENS=100` for snappy kiosk UX under slow CPU generation.
+
+**`gemma-metal`** — Apple Silicon dev dress rehearsal. Offloads every layer of Gemma 4 to the Apple GPU via llama.cpp's Metal backend. The default `llama-cpp-python` wheel on Apple Silicon already bundles Metal support; if yours doesn't, reinstall with `CMAKE_ARGS="-DGGML_METAL=on" pip install --force-reinstall --no-cache-dir llama-cpp-python`. No Docker image — this is a local-venv path for developers.
+
+**`gemma-cuda`** — production GPU path. The LLM, embedder, *and* reranker all run on the NVIDIA GPU. Built for NVIDIA DGX Spark but runs on any CUDA GPU with ≥ 6 GB VRAM (RTX 3090/4090, A100, T4‑16GB, etc.). Uses the Jina multilingual reranker by default (VRAM is plentiful) and bumps `EDGE_MAX_TOKENS` to 800 so answers have room to breathe. See [`docs/gpu-profile.md`](docs/gpu-profile.md) for design and test plan, and [`docs/gpu-profile-lessons.md`](docs/gpu-profile-lessons.md) for runtime gotchas (cuDNN, `onnxruntime-gpu`, Docker-in-Docker on RunPod).
+
+Separate Dockerfiles are provided for each image in `deploy/docker/`. The root Dockerfile defaults to Aya for backward compatibility.
 
 ### Stack
 
 | Component | Library | Role |
 |---|---|---|
 | Document parsing | LiteParse (Bun) | Extract text from PDF, DOCX, images |
-| Text embedding | FastEmbed (ONNX) | Convert text to 384-dim multilingual vectors |
+| Text embedding | FastEmbed (ONNX, CPU or CUDA) | Convert text to 384-dim multilingual vectors |
 | Vector storage | Qdrant Edge | Store and search vectors locally on disk |
-| Reranking | FastEmbed Cross-Encoder (ONNX) | Precision-filter retrieved chunks |
-| Generation | llama-cpp-python (GGUF) | Run LLM locally on CPU (Gemma 4 or Tiny Aya) |
+| Reranking | FastEmbed Cross-Encoder (ONNX, CPU or CUDA) | Precision-filter retrieved chunks |
+| Generation | llama-cpp-python (GGUF, CPU / Metal / CUDA) | Run LLM locally — CPU on Pi, Apple GPU on Mac dev, NVIDIA GPU on Spark / rental |
 | API | FastAPI | HTTP endpoints for query, ingest, chat, translate, info, health |
 
 For detailed component descriptions and data flow diagrams, see [docs/architecture.md](docs/architecture.md).
@@ -83,10 +95,22 @@ Sample documents for testing are in `examples/corpus/`.
 
 ## Requirements
 
+Depends on which profile you deploy:
+
+**CPU (Pi, laptop — `aya` / `gemma` profiles)**
 - Python 3.11+
 - Bun (for LiteParse document parsing, not needed in chat mode)
 - ~4 GB RAM minimum (full mode), ~2.5 GB (chat mode)
 - ~4 GB disk (model weights + vector storage)
+
+**Apple Silicon dev (`gemma-metal` profile)**
+- Same as CPU, plus llama-cpp-python with Metal enabled (default on Apple Silicon wheels)
+
+**NVIDIA GPU (`gemma-cuda` profile — Spark, 4090, A100, T4, etc.)**
+- NVIDIA driver ≥ 550
+- CUDA 12.x runtime + cuDNN 9 (bundled in `Dockerfile.cuda` via the `cudnn-runtime` base image)
+- ≥ 6 GB VRAM (with Jina multilingual reranker), or ≥ 4 GB (with MiniLM English reranker)
+- `--gpus all` when running the container
 
 ## Local Development Setup
 
@@ -164,22 +188,26 @@ Startup takes 15-30 seconds in full mode (loading all models + indexing corpus),
 
 ## Deployment
 
-Three deployment paths, pick the one that fits:
+Four deployment paths, pick the one that fits:
 
 | Path | Best for | Config |
 |---|---|---|
-| **Raspberry Pi / K3s** | Kiosks, edge devices, offline | [`deploy/k8s/`](deploy/k8s/) |
+| **Raspberry Pi / K3s** | Kiosks, edge devices, offline | [`deploy/k8s/`](deploy/k8s/) with `deployment-gemma.yaml` or `deployment-aya.yaml` |
+| **NVIDIA GPU / Spark** | High throughput, large reranker, GPU-accelerated retrieval | [`deploy/k8s/deployment-gemma-cuda.yaml`](deploy/k8s/deployment-gemma-cuda.yaml) |
 | **Fly.io** | Cloud, public-facing, auto-suspend | [`deploy/fly/`](deploy/fly/) |
 | **Docker** | Local testing, laptops, simple setups | [`deploy/docker/`](deploy/docker/) |
 
-All paths use the same Docker images. Choose a model profile per image:
+Choose an image per deployment target:
 
 ```bash
-# Gemma 4 (Apache 2.0, commercial OK, 3.1 GB)
+# Pi — Gemma 4 (Apache 2.0, commercial OK, 3.1 GB)
 docker build -f deploy/docker/Dockerfile.gemma -t voxedge:gemma .
 
-# Tiny Aya (CC-BY-NC, 70+ languages, 2.1 GB)
+# Pi — Tiny Aya (CC-BY-NC, 70+ languages, 2.1 GB)
 docker build -f deploy/docker/Dockerfile.aya -t voxedge:aya .
+
+# NVIDIA GPU / Spark — Gemma 4, full GPU offload (~6-8 GB image)
+docker build -f deploy/docker/Dockerfile.cuda -t voxedge:cuda .
 ```
 
 ### Raspberry Pi / K3s (recommended for kiosks)
@@ -191,6 +219,43 @@ curl -sfL https://get.k3s.io | sh -
 sudo cp deploy/k8s/traefik-config.yaml /var/lib/rancher/k3s/server/manifests/
 kubectl apply -k deploy/k8s/
 ```
+
+### NVIDIA GPU / DGX Spark
+
+For deployments where CPU inference latency matters — shared terminals with many users, long-form answers, or Spark-class hardware waiting for work. The LLM, embedder, and reranker all run on the GPU, with `EDGE_MAX_TOKENS=800` baked into the image so answers aren't truncated by the Pi-kiosk default.
+
+**Docker (any NVIDIA GPU — 4090, A100, T4, DGX Spark)**
+
+```bash
+docker build -f deploy/docker/Dockerfile.cuda -t voxedge:cuda .
+docker run -d --gpus all -p 8080:8080 -v voxedge-data:/data/qdrant voxedge:cuda
+```
+
+**Kubernetes (GPU node with NVIDIA device plugin installed)**
+
+```bash
+kubectl apply -f deploy/k8s/namespace.yaml
+kubectl apply -f deploy/k8s/pvc.yaml
+kubectl apply -f deploy/k8s/service.yaml
+kubectl apply -f deploy/k8s/deployment-gemma-cuda.yaml
+```
+
+The deployment requests `nvidia.com/gpu: 1` and a longer startup probe window for the CUDA cold-start.
+
+**Verify the GPU is actually being used.** `/info` reports both the profile's declared intent *and* the ONNX Runtime providers actually in use:
+
+```json
+"runtime": {
+  "backend": "llama_cuda",
+  "n_gpu_layers": -1,
+  "embedder_device": "cuda",
+  "reranker_device": "cuda",
+  "embedder_active_providers": ["CUDAExecutionProvider", "CPUExecutionProvider"],
+  "reranker_active_providers": ["CUDAExecutionProvider", "CPUExecutionProvider"]
+}
+```
+
+If `embedder_active_providers` or `reranker_active_providers` are `["CPUExecutionProvider"]` only, CUDA silently fell back to CPU — usually a missing cuDNN library. See [`docs/gpu-profile-lessons.md`](docs/gpu-profile-lessons.md) for the fix.
 
 ### Fly.io
 
@@ -319,6 +384,15 @@ In full mode:
 ```json
 {
   "mode": "full",
+  "model_profile": "gemma",
+  "runtime": {
+    "backend": "llama_cpu",
+    "n_gpu_layers": 0,
+    "embedder_device": "cpu",
+    "reranker_device": "cpu",
+    "embedder_active_providers": ["CPUExecutionProvider"],
+    "reranker_active_providers": ["CPUExecutionProvider"]
+  },
   "models": {
     "llm": "/data/models/tiny-aya-global-q4_k_m.gguf",
     "llm_context": 4096,

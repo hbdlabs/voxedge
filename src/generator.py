@@ -41,12 +41,19 @@ class Generator:
     ):
         self._profile = profile
         _apply_patches(profile.patches)
-        logger.info("Loading model: %s (profile=%s, n_ctx=%d)", model_path, profile.name if hasattr(profile, "name") else type(profile).__name__, n_ctx or profile.n_ctx_default)
+        logger.info(
+            "Loading model: %s (profile=%s, backend=%s, n_ctx=%d, n_gpu_layers=%d)",
+            model_path,
+            profile.name if hasattr(profile, "name") else type(profile).__name__,
+            profile.backend,
+            n_ctx or profile.n_ctx_default,
+            profile.n_gpu_layers,
+        )
         kwargs = dict(
             model_path=model_path,
             n_ctx=n_ctx or profile.n_ctx_default,
             n_threads=n_threads,
-            n_gpu_layers=0,
+            n_gpu_layers=profile.n_gpu_layers,
             verbose=False,
         )
         if profile.chat_format:
@@ -146,3 +153,32 @@ class Generator:
             repeat_penalty=self._profile.translate_repeat_penalty,
             stop=stop,
         )
+
+
+_SUPPORTED_BACKENDS = {"llama_cpu", "llama_metal", "llama_cuda"}
+
+
+def build(
+    profile: ModelProfile,
+    model_path: str,
+    n_ctx: int = 0,
+    n_threads: int = 4,
+) -> Generator:
+    """Construct a Generator according to the profile's backend.
+
+    All three backends (llama_cpu, llama_metal, llama_cuda) use the same
+    llama-cpp-python wrapper — the difference is whether llama-cpp-python
+    was compiled with CPU-only, Metal, or CUDA support, and whether the
+    profile sets n_gpu_layers > 0 to offload layers to the accelerator.
+    """
+    if profile.backend not in _SUPPORTED_BACKENDS:
+        raise ValueError(
+            f"Unsupported backend '{profile.backend}' for profile '{profile.name}'. "
+            f"Supported: {sorted(_SUPPORTED_BACKENDS)}"
+        )
+    return Generator(
+        model_path=model_path,
+        profile=profile,
+        n_ctx=n_ctx,
+        n_threads=n_threads,
+    )

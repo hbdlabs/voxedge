@@ -10,6 +10,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from src.config import detect_language, settings
+from src import embedder as embedder_module
+from src import generator as generator_module
+from src import reranker as reranker_module
 from src.embedder import Embedder
 from src.generator import Generator
 from src.profiles import get_profile
@@ -53,24 +56,33 @@ def create_app(
         _start_time = time.time()
         logger.info("Starting VoxEdge (profile=%s, mode=%s)", settings.model_profile, settings.mode)
 
+        profile = get_profile(settings.model_profile)
+
         if app.state.generator is None:
-            profile = get_profile(settings.model_profile)
-            app.state.generator = Generator(
-                model_path=settings.model_path,
+            app.state.generator = generator_module.build(
                 profile=profile,
+                model_path=settings.model_path,
                 n_ctx=settings.n_ctx,
                 n_threads=settings.n_threads,
             )
 
         if settings.mode == "full":
             if app.state.embedder is None:
-                app.state.embedder = Embedder(model_name=settings.embedding_model, cache_dir=settings.cache_dir or None)
+                app.state.embedder = embedder_module.build(
+                    profile=profile,
+                    model_name=settings.embedding_model,
+                    cache_dir=settings.cache_dir or None,
+                )
             if app.state.store is None:
                 app.state.store = VectorStore(
                     path=settings.qdrant_dir, vector_size=384
                 )
             if app.state.reranker is None:
-                app.state.reranker = Reranker(model_name=settings.reranker_model, cache_dir=settings.cache_dir or None)
+                app.state.reranker = reranker_module.build(
+                    profile=profile,
+                    model_name=settings.reranker_model,
+                    cache_dir=settings.cache_dir or None,
+                )
 
             # Ingest baked-in corpus (only new files)
             corpus_dir = Path(settings.corpus_dir)
@@ -127,9 +139,25 @@ def create_app(
 
     @app.get("/info")
     def info():
+        profile = get_profile(settings.model_profile)
+        runtime = {
+            "backend": profile.backend,
+            "n_gpu_layers": profile.n_gpu_layers,
+            "embedder_device": profile.embedder_device,
+            "reranker_device": profile.reranker_device,
+        }
+        # Expose the ONNX Runtime providers actually in use, not just the
+        # profile's declared intent. CUDAExecutionProvider can silently
+        # fall back to CPU if cuDNN isn't available; surfacing the real
+        # provider list makes that visible rather than hidden.
+        if app.state.embedder is not None and hasattr(app.state.embedder, "active_providers"):
+            runtime["embedder_active_providers"] = app.state.embedder.active_providers()
+        if app.state.reranker is not None and hasattr(app.state.reranker, "active_providers"):
+            runtime["reranker_active_providers"] = app.state.reranker.active_providers()
         result = {
             "mode": settings.mode,
             "model_profile": settings.model_profile,
+            "runtime": runtime,
             "models": {
                 "llm": settings.model_path,
                 "llm_context": settings.n_ctx,
