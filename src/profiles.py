@@ -95,10 +95,25 @@ GEMMA_METAL = _replace(
 )
 
 
+# GPU-accelerated deployment. Same Gemma 4 GGUF, offloaded in full to an
+# NVIDIA GPU via llama.cpp CUDA. Embedder and reranker run on CUDA via
+# FastEmbed's cuda=True shortcut (CUDAExecutionProvider). Requires
+# llama-cpp-python built with -DGGML_CUDA=on and onnxruntime-gpu.
+GEMMA_CUDA = _replace(
+    GEMMA,
+    name="gemma-cuda",
+    backend="llama_cuda",
+    embedder_device="cuda",
+    reranker_device="cuda",
+    n_gpu_layers=-1,
+)
+
+
 PROFILES = {
     "aya": AYA,
     "gemma": GEMMA,
     "gemma-metal": GEMMA_METAL,
+    "gemma-cuda": GEMMA_CUDA,
 }
 
 

@@ -82,6 +82,20 @@ def test_default_profiles_have_cpu_runtime_fields():
         assert p.n_gpu_layers == 0
 
 
+def test_gemma_cuda_profile():
+    """gemma-cuda runs LLM, embedder, and reranker all on the GPU."""
+    from src.profiles import GEMMA, get_profile
+    p = get_profile("gemma-cuda")
+    assert p.backend == "llama_cuda"
+    assert p.n_gpu_layers == -1
+    assert p.embedder_device == "cuda"
+    assert p.reranker_device == "cuda"
+    # Prompt templates and stops must match gemma — only runtime differs.
+    assert p.rag_template == GEMMA.rag_template
+    assert p.chat_template == GEMMA.chat_template
+    assert p.translate_template == GEMMA.translate_template
+
+
 def test_gemma_metal_profile():
     """gemma-metal offloads all layers, embedder/reranker stay on CPU."""
     from src.profiles import get_profile
