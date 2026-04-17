@@ -33,6 +33,8 @@ spec:
               value: "/data/models/gemma-4-e2b-q4_k_m.gguf"
             - name: EDGE_N_CTX
               value: "8192"
+            - name: EDGE_MAX_TOKENS
+              value: "800"
             - name: EDGE_RERANKER_MODEL
               value: "jinaai/jina-reranker-v2-base-multilingual"
             - name: EDGE_CACHE_DIR

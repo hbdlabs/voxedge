@@ -56,6 +56,9 @@ COPY src/ src/
 ENV EDGE_MODEL_PROFILE=gemma-cuda
 ENV EDGE_MODEL_PATH=/data/models/gemma-4-e2b-q4_k_m.gguf
 ENV EDGE_N_CTX=8192
+# GPU inference is fast enough that the Pi's 100-token default is artificially
+# short. Give the model room for real answers.
+ENV EDGE_MAX_TOKENS=800
 # gemma-cuda defaults to the Jina multilingual reranker — VRAM is plentiful
 # and it handles non-English corpora correctly.
 ENV EDGE_RERANKER_MODEL=jinaai/jina-reranker-v2-base-multilingual
