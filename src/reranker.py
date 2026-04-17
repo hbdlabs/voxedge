@@ -45,10 +45,14 @@ class Reranker:
 
     def active_providers(self) -> list[str]:
         """Return the ONNX Runtime providers actually in use by this session."""
-        sess = getattr(self._model, "model", None)
-        if sess is None or not hasattr(sess, "get_providers"):
-            return []
-        return sess.get_providers()
+        obj = self._model
+        for _ in range(4):
+            if hasattr(obj, "get_providers"):
+                return obj.get_providers()
+            obj = getattr(obj, "model", None)
+            if obj is None:
+                break
+        return []
 
 
 _SUPPORTED_DEVICES = {"cpu", "cuda"}

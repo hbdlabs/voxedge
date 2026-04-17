@@ -25,10 +25,16 @@ class Embedder:
         Surfaces whether CUDA activated at runtime or silently fell back
         to CPU (which can happen if cuDNN is missing).
         """
-        sess = getattr(self._model, "model", None)
-        if sess is None or not hasattr(sess, "get_providers"):
-            return []
-        return sess.get_providers()
+        # FastEmbed wraps the ONNX session two levels deep:
+        # TextEmbedding -> internal model wrapper -> onnxruntime session.
+        obj = self._model
+        for _ in range(4):
+            if hasattr(obj, "get_providers"):
+                return obj.get_providers()
+            obj = getattr(obj, "model", None)
+            if obj is None:
+                break
+        return []
 
 
 _SUPPORTED_DEVICES = {"cpu", "cuda"}
