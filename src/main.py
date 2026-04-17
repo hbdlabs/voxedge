@@ -140,15 +140,24 @@ def create_app(
     @app.get("/info")
     def info():
         profile = get_profile(settings.model_profile)
+        runtime = {
+            "backend": profile.backend,
+            "n_gpu_layers": profile.n_gpu_layers,
+            "embedder_device": profile.embedder_device,
+            "reranker_device": profile.reranker_device,
+        }
+        # Expose the ONNX Runtime providers actually in use, not just the
+        # profile's declared intent. CUDAExecutionProvider can silently
+        # fall back to CPU if cuDNN isn't available; surfacing the real
+        # provider list makes that visible rather than hidden.
+        if app.state.embedder is not None and hasattr(app.state.embedder, "active_providers"):
+            runtime["embedder_active_providers"] = app.state.embedder.active_providers()
+        if app.state.reranker is not None and hasattr(app.state.reranker, "active_providers"):
+            runtime["reranker_active_providers"] = app.state.reranker.active_providers()
         result = {
             "mode": settings.mode,
             "model_profile": settings.model_profile,
-            "runtime": {
-                "backend": profile.backend,
-                "n_gpu_layers": profile.n_gpu_layers,
-                "embedder_device": profile.embedder_device,
-                "reranker_device": profile.reranker_device,
-            },
+            "runtime": runtime,
             "models": {
                 "llm": settings.model_path,
                 "llm_context": settings.n_ctx,

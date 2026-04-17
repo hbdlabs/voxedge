@@ -19,6 +19,17 @@ class Embedder:
         """Embed a list of texts into 384-dim vectors."""
         return [vec.tolist() for vec in self._model.embed(texts)]
 
+    def active_providers(self) -> list[str]:
+        """Return the ONNX Runtime providers actually in use by this session.
+
+        Surfaces whether CUDA activated at runtime or silently fell back
+        to CPU (which can happen if cuDNN is missing).
+        """
+        sess = getattr(self._model, "model", None)
+        if sess is None or not hasattr(sess, "get_providers"):
+            return []
+        return sess.get_providers()
+
 
 _SUPPORTED_DEVICES = {"cpu", "cuda"}
 

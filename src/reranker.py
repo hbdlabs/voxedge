@@ -43,6 +43,13 @@ class Reranker:
         reranked = sorted(chunks, key=lambda c: c["rerank_score"], reverse=True)
         return reranked[:top_k]
 
+    def active_providers(self) -> list[str]:
+        """Return the ONNX Runtime providers actually in use by this session."""
+        sess = getattr(self._model, "model", None)
+        if sess is None or not hasattr(sess, "get_providers"):
+            return []
+        return sess.get_providers()
+
 
 _SUPPORTED_DEVICES = {"cpu", "cuda"}
 
