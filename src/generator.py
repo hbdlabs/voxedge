@@ -1,5 +1,6 @@
 import logging
 import re
+import threading
 
 import jinja2
 from llama_cpp import Llama
@@ -59,6 +60,10 @@ class Generator:
         if profile.chat_format:
             kwargs["chat_format"] = profile.chat_format
         self._llm = Llama(**kwargs)
+        # llama.cpp's context is not thread-safe; serialize all generation so
+        # concurrent requests (FastAPI runs sync endpoints in a threadpool)
+        # queue instead of racing the shared context and crashing the process.
+        self._lock = threading.Lock()
         logger.info("Model loaded successfully")
 
     @staticmethod
@@ -86,29 +91,34 @@ class Generator:
 
     def _complete(self, prompt: str, max_tokens: int, temperature: float,
                   repeat_penalty: float, stop: list[str]) -> str:
-        """Route to chat API or completion API based on profile."""
-        if self._profile.use_chat_api:
-            messages = [{"role": "user", "content": prompt}]
-            result = self._llm.create_chat_completion(
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                top_p=0.9,
-                repeat_penalty=repeat_penalty,
-            )
-            text = result["choices"][0]["message"]["content"].strip()
-            cleaned = self._strip_thinking(text)
-            return cleaned if cleaned else text  # fallback to raw if stripping removes everything
-        else:
-            result = self._llm.create_completion(
-                prompt=prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                top_p=0.9,
-                repeat_penalty=repeat_penalty,
-                stop=stop,
-            )
-            return result["choices"][0]["text"].strip()
+        """Route to chat API or completion API based on profile.
+
+        Held under self._lock: llama.cpp is not thread-safe, so concurrent
+        callers serialize here instead of crashing the shared context.
+        """
+        with self._lock:
+            if self._profile.use_chat_api:
+                messages = [{"role": "user", "content": prompt}]
+                result = self._llm.create_chat_completion(
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=0.9,
+                    repeat_penalty=repeat_penalty,
+                )
+                text = result["choices"][0]["message"]["content"].strip()
+                cleaned = self._strip_thinking(text)
+                return cleaned if cleaned else text  # fallback to raw if stripping removes everything
+            else:
+                result = self._llm.create_completion(
+                    prompt=prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=0.9,
+                    repeat_penalty=repeat_penalty,
+                    stop=stop,
+                )
+                return result["choices"][0]["text"].strip()
 
     def generate(
         self,
