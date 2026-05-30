@@ -1,6 +1,4 @@
-import json
 import logging
-import subprocess
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -35,17 +33,36 @@ def parse_file(path: Path) -> str:
 
 
 def _parse_with_liteparse(path: Path) -> str:
-    """Parse a document using LiteParse JSON mode and reconstruct clean text."""
-    result = subprocess.run(
-        ["bunx", "@llamaindex/liteparse@2.0.4", "parse", str(path), "--format", "json", "--no-ocr"],
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"LiteParse failed for {path}: {result.stderr}")
+    """Parse a document with the LiteParse Python bindings and reconstruct text.
 
-    data = json.loads(result.stdout)
+    Uses the in-process native parser — no Bun/Node subprocess. (The JS CLI path
+    via `bunx` can't load liteparse 2.x's native module reliably.) OCR is disabled
+    to keep to a text-layer-only policy.
+
+    The binding returns PDF-native, *bottom-origin* y coordinates (y grows upward),
+    whereas `_reconstruct_from_spatial`'s header/footer filtering expects
+    top-origin (y grows downward, like the old CLI JSON), so we flip y per page.
+    """
+    import liteparse  # lazy: only needed for non-plaintext documents
+
+    result = liteparse.LiteParse(ocr_enabled=False, quiet=True).parse(str(path))
+    data = {
+        "pages": [
+            {
+                "height": page.height,
+                "textItems": [
+                    {
+                        "x": item.x,
+                        "y": page.height - item.y,  # bottom-origin -> top-origin
+                        "fontSize": item.font_size,
+                        "text": item.text,
+                    }
+                    for item in page.text_items
+                ],
+            }
+            for page in result.pages
+        ]
+    }
     return _reconstruct_from_spatial(data)
 
 
