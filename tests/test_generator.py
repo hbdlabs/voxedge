@@ -59,3 +59,47 @@ def test_generate_calls_model(mock_llama_cls):
 
     assert result == "The answer is 42."
     mock_llm.create_completion.assert_called_once()
+
+
+@patch("src.generator.Llama")
+def test_generate_serializes_concurrent_calls(mock_llama_cls):
+    """Concurrent generations must not overlap in the LLM.
+
+    llama.cpp is not thread-safe; without the lock, parallel requests race the
+    shared context and crash the process (GGML_ASSERT). This proves the lock
+    keeps at most one caller inside the model at a time.
+    """
+    import threading
+    import time
+
+    from src.generator import Generator
+
+    state = {"active": 0, "max": 0}
+    guard = threading.Lock()
+
+    def fake_completion(**_kwargs):
+        with guard:
+            state["active"] += 1
+            state["max"] = max(state["max"], state["active"])
+        time.sleep(0.02)  # hold the "model" so overlaps would be observable
+        with guard:
+            state["active"] -= 1
+        return {"choices": [{"text": "ok"}]}
+
+    mock_llm = MagicMock()
+    mock_llm.create_completion.side_effect = fake_completion
+    mock_llama_cls.return_value = mock_llm
+
+    gen = Generator(model_path="/fake/model.gguf", profile=get_profile("aya"))
+
+    threads = [
+        threading.Thread(target=gen.generate, args=(["ctx"], "q?"))
+        for _ in range(8)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert mock_llm.create_completion.call_count == 8
+    assert state["max"] == 1, f"lock failed: {state['max']} concurrent calls in the LLM"
