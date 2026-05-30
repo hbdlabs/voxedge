@@ -2,11 +2,14 @@
 # voxedge CUDA smoke test on a RunPod GPU pod.
 #
 # Verifies the `aya-cuda` profile actually runs the LLM (llama.cpp) AND fastembed
-# (embedder + reranker) on the GPU. Works on any Ampere/Ada GPU (A5000/A10/A40/
-# 4090/A100) — our CUDA arch pin covers 80;86;89.
+# (embedder + reranker) on the GPU. Works on any modern NVIDIA GPU — Ampere/Ada
+# (A5000/A10/A40/4090/A100) and even Blackwell (RTX PRO): the arch pin covers
+# 80;86;89 and newer cards JIT from the wheel's PTX (first query is slow once,
+# then cached).
 #
-# Use a RunPod template that has the CUDA *toolkit* + cuDNN, e.g. a PyTorch 2.x /
-# CUDA 12.x image. Expose HTTP port 8080. Then paste this in the pod terminal.
+# Use a RunPod template with the CUDA *toolkit* — a PyTorch 2.x / CUDA 12.x
+# `-devel` image. cuDNN for onnxruntime-gpu is handled below if the image lacks
+# it. Expose HTTP port 8080. Then paste this in the pod terminal.
 set -euo pipefail
 
 # --- 0) Code: clone the private repo (PAT with read access to hbdlabs/voxedge) ---
@@ -26,10 +29,21 @@ pip install --force-reinstall --no-deps "llama-cpp-python==0.3.23" \
   || CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=80;86;89" \
        pip install --force-reinstall --no-deps "llama-cpp-python==0.3.23"
 
-# --- 3) GPU fastembed: swap CPU onnxruntime for the GPU build (needs cuDNN, which
-#        the PyTorch/CUDA templates already have) ---
-pip uninstall -y onnxruntime || true
-pip install --force-reinstall --no-deps onnxruntime-gpu
+# --- 3) GPU fastembed: swap CPU onnxruntime for the GPU build. Install WITH deps
+#        so it pulls a matching cuDNN/cuBLAS (CUDA -devel images often DON'T ship
+#        system cuDNN), then point LD_LIBRARY_PATH at them. Without this,
+#        CUDAExecutionProvider silently falls back to CPU and /info mis-reports it. ---
+pip uninstall -y onnxruntime onnxruntime-gpu || true
+pip install onnxruntime-gpu
+export LD_LIBRARY_PATH="$(python - <<'PY'
+import os, glob
+libs = []
+for p in ("cudnn", "cublas"):
+    m = __import__("nvidia." + p, fromlist=[p])
+    libs += glob.glob(os.path.join(os.path.dirname(m.__file__), "lib"))
+print(":".join(libs))
+PY
+):${LD_LIBRARY_PATH:-}"
 
 # --- 4) Model ---
 mkdir -p /data/models
