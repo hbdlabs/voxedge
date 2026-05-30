@@ -638,16 +638,19 @@ Before ingesting, review what gets extracted:
 - **Adjust score threshold.** Lower if too many misses, raise if too many wrong answers.
 - **Test with known answers.** Compare system output against actual document content.
 
-### What actually moves quality (from testing)
+### Optimizing answer quality
 
-Honest, in rough priority order:
+When answers are weak, the fix is usually one of these — roughly in order of impact:
 
-1. **The generation model is usually the ceiling, not retrieval.** With a real corpus, retrieval reliably found the right chunks even at ~4k chunks, but the small (2B) model still garbled dense/technical synthesis. If answers are wrong-but-on-topic, a **bigger model** (the Gemma profile, or a larger GGUF) helps more than any retrieval tweak.
-2. **Chunk size > chunk count.** Small chunks (~250) fragment passages into snippets, so the model gets disconnected pieces. Raising `EDGE_CHUNK_SIZE` to **~500–600** gave noticeably fuller, more accurate answers on dense docs — a bigger lever than raising `EDGE_TOP_K`. Trade-offs: slightly less precise retrieval and slower generation; requires re-ingest.
-3. **Match the reranker to the corpus language.** The English `ms-marco` reranker flatlines on non-English text (scores everything near-equal); use the multilingual `jina-reranker-v2` for any non-English or mixed corpus.
-4. **For multilingual users, turn on `EDGE_TRANSLATE_QUERIES`.** A foreign-language query over a single-language corpus can retrieve the wrong document (the embedder's cross-lingual alignment is weak for lower-resource languages); translating the query into the corpus language first fixes it uniformly (one extra LLM call).
+- **The generation model is often the ceiling, not retrieval.** If answers are on-topic but vague or wrong, the model is struggling to *synthesize* the context it was given, not failing to find it. A larger or higher-quality model (the Gemma profile, or a bigger GGUF) raises answer quality without changing retrieval. Small edge models trade quality for footprint — fine for direct Q&A, weaker on dense or technical material.
 
-What *doesn't* help much: returning more chunks (`EDGE_TOP_K`) rarely rescues a wrong answer and can add noise — retrieval already scales fine to thousands of chunks.
+- **Chunk size, more than chunk count.** Small chunks retrieve precisely but hand the model fragmented snippets; larger chunks (`EDGE_CHUNK_SIZE` ≈ 500–600) give it coherent passages and usually produce fuller, more accurate answers on dense documents — often a bigger lever than raising `EDGE_TOP_K`. Trade-off: larger chunks are slightly less targeted for retrieval and a little slower to generate, and changing this requires re-ingesting. Returning *more* chunks rarely rescues a wrong answer and can add noise.
+
+- **Match the reranker to the corpus language.** The English `ms-marco` reranker is small and fast but unreliable on non-English text. For any non-English or mixed corpus, use the multilingual `jina-reranker-v2` (`EDGE_RERANKER_MODEL`).
+
+- **Multilingual and lower-resource languages.** Cross-lingual retrieval relies on the embedding model placing different languages in a shared space. This holds up well for high-resource languages but weakens for lower-resource ones — a query in such a language can pull the wrong document. Two levers:
+  - **`EDGE_TRANSLATE_QUERIES`** — translate the query into the corpus language before retrieval. The most reliable option, works uniformly across languages, at the cost of one extra LLM call per foreign-language query.
+  - **A stronger multilingual embedder** improves cross-lingual alignment for more languages, but larger models cost RAM and speed (a real constraint on edge hardware) and may still under-serve the lowest-resource languages.
 
 ## Licensing
 
