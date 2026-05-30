@@ -6,11 +6,11 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Bun (for LiteParse)
-RUN curl -fsSL https://bun.sh/install | bash
+RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"
 ENV PATH="/root/.bun/bin:$PATH"
 
-# Install LiteParse CLI
-RUN bun install -g @llamaindex/liteparse
+# Install LiteParse CLI (pinned to match src/parser.py)
+RUN bun install -g @llamaindex/liteparse@2.0.4
 
 # Copy source first (needed for pip install)
 WORKDIR /app

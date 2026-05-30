@@ -37,7 +37,7 @@ def parse_file(path: Path) -> str:
 def _parse_with_liteparse(path: Path) -> str:
     """Parse a document using LiteParse JSON mode and reconstruct clean text."""
     result = subprocess.run(
-        ["bunx", "@llamaindex/liteparse", "parse", str(path), "--format", "json"],
+        ["bunx", "@llamaindex/liteparse@2.0.4", "parse", str(path), "--format", "json", "--no-ocr"],
         capture_output=True,
         text=True,
         timeout=120,

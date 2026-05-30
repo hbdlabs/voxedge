@@ -14,23 +14,23 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "fastapi>=0.115.0",
-    "uvicorn>=0.30.0",
-    "fastembed>=0.4.0",
-    "qdrant-edge-py>=0.6.0",
-    "llama-cpp-python>=0.3.20",
-    "liteparse>=1.2.0",
+    "fastapi>=0.136.3",
+    "uvicorn>=0.48.0",
+    "fastembed>=0.8.0",
+    "qdrant-edge-py>=0.7.1",
+    "llama-cpp-python>=0.3.23",
+    "liteparse>=2.0.4",
     "langdetect>=1.0.9",
-    "python-multipart>=0.0.9",
-    "pydantic-settings>=2.0.0",
+    "python-multipart>=0.0.29",
+    "pydantic-settings>=2.14.1",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.24.0",
-    "httpx>=0.27.0",
-    "numpy>=1.24.0",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.4.0",
+    "httpx>=0.28.1",
+    "numpy>=2.0.0",
 ]
 
 [tool.pytest.ini_options]

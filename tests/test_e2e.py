@@ -10,6 +10,7 @@ from src.generator import Generator
 from src.store import VectorStore
 from src.ingest import ingest_file
 from src.query import query_brain
+from src.profiles import get_profile
 
 MODEL_PATH = os.path.expanduser("~/models/tiny-aya-global-q4_k_m.gguf")
 pytestmark = pytest.mark.skipif(
@@ -35,7 +36,9 @@ def test_full_e2e(tmp_path: Path):
     # 2. Set up real components
     embedder = Embedder()
     store = VectorStore(path=str(tmp_path / "qdrant"), vector_size=384)
-    generator = Generator(model_path=MODEL_PATH, n_ctx=2048, n_threads=4)
+    generator = Generator(
+        model_path=MODEL_PATH, profile=get_profile("aya"), n_ctx=2048, n_threads=4
+    )
 
     # 3. Ingest
     result = ingest_file(doc, embedder, store, chunk_size=300, chunk_overlap=50)

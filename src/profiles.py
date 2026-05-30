@@ -109,8 +109,23 @@ GEMMA_CUDA = _replace(
 )
 
 
+# Same tiny-aya GGUF as the CPU `aya` profile, but offloaded to an NVIDIA GPU.
+# Embedder and reranker run on CUDA via FastEmbed's cuda=True shortcut. Used to
+# validate the CUDA path on a small/cheap model before committing to Gemma.
+# Requires llama-cpp-python built with -DGGML_CUDA=on and onnxruntime-gpu.
+AYA_CUDA = _replace(
+    AYA,
+    name="aya-cuda",
+    backend="llama_cuda",
+    embedder_device="cuda",
+    reranker_device="cuda",
+    n_gpu_layers=-1,
+)
+
+
 PROFILES = {
     "aya": AYA,
+    "aya-cuda": AYA_CUDA,
     "gemma": GEMMA,
     "gemma-metal": GEMMA_METAL,
     "gemma-cuda": GEMMA_CUDA,

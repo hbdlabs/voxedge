@@ -1,0 +1,32 @@
+# THROWAWAY GPU test app — validates the CUDA path on tiny-aya (aya-cuda profile).
+# Separate from the CPU prod app (voxedge on arn). No volume: ephemeral, corpus
+# auto-ingests at boot. Tear down after testing: fly apps destroy voxedge-gpu-test
+app = 'voxedge-gpu-test'
+primary_region = 'ams'
+
+[build]
+
+[env]
+  EDGE_QDRANT_DIR = '/data/qdrant'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  gpu_kind = 'a10'
+  cpu_kind = 'performance'
+  cpus = 8
+  memory = '32768'
+
+[checks]
+  [checks.health]
+    type = 'http'
+    port = 8080
+    path = '/health'
+    interval = '30s'
+    timeout = '10s'
+    grace_period = '900s'
