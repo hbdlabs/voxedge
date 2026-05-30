@@ -50,8 +50,8 @@ mkdir -p /data/models
 curl -L -o /data/models/tiny-aya-global-q4_k_m.gguf \
   "https://huggingface.co/CohereLabs/tiny-aya-global-GGUF/resolve/main/tiny-aya-global-q4_k_m.gguf"
 
-# --- 5) Plain-text corpus so /query works without bun/liteparse (a .txt is read
-#        directly; the baked PDF would need bun). Embedder+reranker still GPU. ---
+# --- 5) Drop in a tiny text corpus so /query has something to retrieve.
+#        (PDFs work too — parsed in-process by the liteparse Python binding.) ---
 rm -rf data/corpus && mkdir -p data/corpus
 cat > data/corpus/health.txt <<'EOF'
 Malaria is spread by mosquitoes. Prevention includes insecticide-treated bed nets,

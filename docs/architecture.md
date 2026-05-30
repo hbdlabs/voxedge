@@ -69,9 +69,9 @@ Also provides `detect_language(text)` -- a shared utility wrapping langdetect wi
 Extracts raw text from document files. Two code paths:
 
 - **Plain text** (`.txt`, `.md`): read directly with `path.read_text()`. No external dependencies.
-- **Rich documents** (`.pdf`, `.docx`, `.pptx`, `.xlsx`, images): shells out to LiteParse via Bun as a subprocess: `bunx @llamaindex/liteparse parse <file> --format text`.
+- **Rich documents** (`.pdf`, `.docx`, `.pptx`, `.xlsx`, images): parsed in-process with the LiteParse **Python binding** — `liteparse.LiteParse(ocr_enabled=False).parse(file)` — which returns pages of spatial text items (`x`, `y`, `font_size`, `text`) that `_reconstruct_from_spatial` turns into clean text.
 
-**LiteParse** is a document parser by LlamaIndex that extracts text from PDFs using PDF.js, handles Office documents via LibreOffice conversion, and supports OCR via Tesseract.js. It runs on Bun (a fast JavaScript runtime, alternative to Node.js) and is invoked as a CLI subprocess from Python. The `--format text` flag returns plain extracted text; LiteParse also supports `--format json` for spatial layout with bounding boxes.
+**LiteParse** is a document parser by LlamaIndex (native Rust core with Python bindings) that extracts text from PDFs with spatial layout, handles Office documents via LibreOffice conversion, and supports OCR. We use the in-process Python binding (no Bun/Node subprocess); earlier the JS CLI was shelled out via `bunx`, but liteparse 2.x's native module doesn't load reliably under bunx, so the binding is both correct and faster.
 
 **Input:** file path
 **Output:** extracted text as a single string
@@ -300,7 +300,7 @@ Uses a factory pattern (`create_app()`) that accepts pre-built components for te
 PDF/TXT/DOCX file
      |
      v
-[parser.py] -- LiteParse (Bun) for PDFs, direct read for .txt/.md
+[parser.py] -- LiteParse (Python binding) for PDFs, direct read for .txt/.md
      |
      v
 Raw text string
@@ -357,9 +357,8 @@ On-disk shard at /data/qdrant/
 
 ```
 Python 3.11-slim base
-  + Bun runtime (for LiteParse)
-  + LiteParse CLI
-  + Python dependencies (FastEmbed, qdrant-edge-py, llama-cpp-python, ...)
+  + LibreOffice (Office-doc -> PDF conversion for LiteParse)
+  + Python dependencies (FastEmbed, qdrant-edge-py, llama-cpp-python, liteparse, ...)
   + Tiny Aya GGUF model (2.1 GB, downloaded at build time)
   + Baked-in corpus documents
 ```
