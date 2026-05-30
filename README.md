@@ -638,6 +638,17 @@ Before ingesting, review what gets extracted:
 - **Adjust score threshold.** Lower if too many misses, raise if too many wrong answers.
 - **Test with known answers.** Compare system output against actual document content.
 
+### What actually moves quality (from testing)
+
+Honest, in rough priority order:
+
+1. **The generation model is usually the ceiling, not retrieval.** With a real corpus, retrieval reliably found the right chunks even at ~4k chunks, but the small (2B) model still garbled dense/technical synthesis. If answers are wrong-but-on-topic, a **bigger model** (the Gemma profile, or a larger GGUF) helps more than any retrieval tweak.
+2. **Chunk size > chunk count.** Small chunks (~250) fragment passages into snippets, so the model gets disconnected pieces. Raising `EDGE_CHUNK_SIZE` to **~500–600** gave noticeably fuller, more accurate answers on dense docs — a bigger lever than raising `EDGE_TOP_K`. Trade-offs: slightly less precise retrieval and slower generation; requires re-ingest.
+3. **Match the reranker to the corpus language.** The English `ms-marco` reranker flatlines on non-English text (scores everything near-equal); use the multilingual `jina-reranker-v2` for any non-English or mixed corpus.
+4. **For multilingual users, turn on `EDGE_TRANSLATE_QUERIES`.** A foreign-language query over a single-language corpus can retrieve the wrong document (the embedder's cross-lingual alignment is weak for lower-resource languages); translating the query into the corpus language first fixes it uniformly (one extra LLM call).
+
+What *doesn't* help much: returning more chunks (`EDGE_TOP_K`) rarely rescues a wrong answer and can add noise — retrieval already scales fine to thousands of chunks.
+
 ## Licensing
 
 - **Gemma 4 E2B** (Google): Apache 2.0 (commercial use OK)
