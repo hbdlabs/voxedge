@@ -1,16 +1,10 @@
 FROM python:3.11-slim
 
-# Install system deps
+# Install system deps. LibreOffice converts Office docs to PDF for liteparse;
+# document parsing itself is the in-process liteparse Python binding (no Bun).
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl unzip build-essential libreoffice-core libreoffice-writer libreoffice-calc libreoffice-impress && \
+    apt-get install -y --no-install-recommends curl build-essential libreoffice-core libreoffice-writer libreoffice-calc libreoffice-impress && \
     rm -rf /var/lib/apt/lists/*
-
-# Install Bun (for LiteParse)
-RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"
-ENV PATH="/root/.bun/bin:$PATH"
-
-# Install LiteParse CLI (pinned to match src/parser.py)
-RUN bun install -g @llamaindex/liteparse@2.0.4
 
 # Copy source first (needed for pip install)
 WORKDIR /app

@@ -84,7 +84,7 @@ Separate Dockerfiles for each image live in `deploy/docker/`. The root Dockerfil
 
 | Component | Library | Role |
 |---|---|---|
-| Document parsing | LiteParse (Bun) | Extract text from PDF, DOCX, images |
+| Document parsing | LiteParse (Python binding) | Extract text from PDF, DOCX, images |
 | Text embedding | FastEmbed (ONNX, CPU or CUDA) | Convert text to 384-dim multilingual vectors |
 | Vector storage | Qdrant Edge | Store and search vectors locally on disk |
 | Reranking | FastEmbed Cross-Encoder (ONNX, CPU or CUDA) | Precision-filter retrieved chunks |
@@ -101,7 +101,7 @@ Depends on which profile you deploy:
 
 **CPU (Pi, laptop — `aya` / `gemma` profiles)**
 - Python 3.11+
-- Bun (for LiteParse document parsing, not needed in chat mode)
+- LibreOffice — only to parse Office docs (`.docx`/`.xlsx`/`.pptx`); not needed for PDF or text
 - ~4 GB RAM minimum (full mode), ~2.5 GB (chat mode)
 - ~4 GB disk (model weights + vector storage)
 
@@ -141,19 +141,9 @@ llama-cpp-python builds from source and requires `cmake` and a C++ compiler:
 - **Linux**: `apt-get install build-essential cmake`
 - **Windows**: Visual Studio Build Tools with "C++ build tools" workload, plus CMake (`winget install cmake`)
 
-### 3. Install Bun
+PDF/DOCX parsing uses the in-process `liteparse` Python binding (installed above) — no Bun or Node needed. For Office docs (`.docx`/`.xlsx`/`.pptx`), also install LibreOffice (`brew install --cask libreoffice` / `apt-get install libreoffice`).
 
-```bash
-# macOS / Linux
-curl -fsSL https://bun.sh/install | bash
-
-# Windows
-powershell -c "irm bun.sh/install.ps1 | iex"
-```
-
-Bun is needed for LiteParse (PDF/DOCX parsing). If you only use `.txt` and `.md` files or run in chat mode, Bun is not required.
-
-### 4. Download the GGUF model
+### 3. Download the GGUF model
 
 ```bash
 mkdir -p ~/models
@@ -163,7 +153,7 @@ curl -L -o ~/models/tiny-aya-global-q4_k_m.gguf \
 
 This is ~2.1 GB. The model is stored in `~/models/` so it can be shared across projects and easily managed.
 
-### 5. Run tests
+### 4. Run tests
 
 ```bash
 python -m pytest tests/ -v
@@ -171,7 +161,7 @@ python -m pytest tests/ -v
 
 Unit and integration tests run without the GGUF model (they mock the generator). The end-to-end test (`test_e2e.py`) requires the model and is skipped automatically if the file is not found.
 
-### 6. Start the server
+### 5. Start the server
 
 ```bash
 # Full mode (RAG + chat + translate)
@@ -614,12 +604,13 @@ LiteParse preserves spatial structure rather than converting it away. Instead of
 
 We use this spatial data in `parser.py` to reconstruct clean text. The parser groups text items into lines by Y position, identifies garbled regions (OCR artifacts from screenshots, tiny mixed font sizes) and filters them out, and strips headers and footers by their position on the page.
 
-```bash
-# Inspect spatial output
-bunx @llamaindex/liteparse parse your_document.pdf --format json | python3 -m json.tool
-
-# Compare with plain text extraction
-bunx @llamaindex/liteparse parse your_document.pdf --format text
+```python
+# Inspect what liteparse extracts (in-process Python binding, no Bun)
+import liteparse
+r = liteparse.LiteParse(ocr_enabled=False).parse("your_document.pdf")
+print("pages:", r.num_pages)
+print(r.pages[0].text[:500])           # reconstructed text for page 1
+print(r.pages[0].text_items[0])        # one spatial item: x/y/font_size/text
 ```
 
 ### Know your documents

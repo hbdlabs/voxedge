@@ -38,3 +38,6 @@ docs/superpowers/
 # OS
 .DS_Store
 Thumbs.db
+
+# local RunPod helper (paired with .env, not part of the repo)
+/runpod_run.sh
