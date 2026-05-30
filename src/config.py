@@ -21,6 +21,27 @@ class Settings(BaseSettings):
     chunk_overlap: int = 30
     top_k: int = 5
     score_threshold: float = 0.3
+
+    # --- Cross-lingual retrieval ---
+    # When the corpus is in one language (e.g. English) but users ask in others,
+    # the multilingual embedder and reranker can mis-route the query: a Vietnamese
+    # question can retrieve the *wrong* English document, because cross-lingual
+    # alignment is weak for lower-resource languages (verified — a Vietnamese
+    # "what is tuberculosis?" retrieved the cholera doc).
+    #
+    # With `translate_queries` on, any query whose detected language differs from
+    # `corpus_language` is translated INTO corpus_language *before* embedding,
+    # vector search, and reranking — turning a weak cross-lingual match into a
+    # strong monolingual one (this recovered both the Vietnamese and Spanish
+    # queries that otherwise failed). The answer is still generated from the
+    # user's ORIGINAL question, so it comes back in their language.
+    #
+    # Cost: one extra short LLM call per translated query. Off by default. Best
+    # for a single-language corpus; leave off if the corpus is itself multilingual
+    # (then "translate to which language?" has no single answer).
+    translate_queries: bool = False
+    corpus_language: str = "English"  # language the documents/embeddings are in; queries in other languages are translated to this before retrieval (only when translate_queries=True)
+
     corpus_dir: str = "/data/corpus"
     qdrant_dir: str = "/data/qdrant"
     max_tokens: int = 100

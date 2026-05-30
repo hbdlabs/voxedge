@@ -212,6 +212,8 @@ def create_app(
             top_k=settings.top_k,
             score_threshold=settings.score_threshold,
             max_tokens=settings.max_tokens,
+            translate_queries=settings.translate_queries,
+            corpus_language=settings.corpus_language,
         )
         return {
             "answer": result.answer,

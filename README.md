@@ -483,6 +483,8 @@ All settings are configurable via environment variables with the `EDGE_` prefix:
 | `EDGE_CHUNK_OVERLAP` | `30` | Overlap between chunks |
 | `EDGE_TOP_K` | `5` | Chunks passed to LLM after reranking |
 | `EDGE_SCORE_THRESHOLD` | `0.3` | Minimum similarity for initial retrieval |
+| `EDGE_TRANSLATE_QUERIES` | `false` | Translate a query into `EDGE_CORPUS_LANGUAGE` before retrieval when its detected language differs. Fixes cross-lingual mis-routing (e.g. a Vietnamese query retrieving the wrong English doc); the answer still comes back in the user's language. Costs one extra short LLM call per translated query. Best for a single-language corpus. |
+| `EDGE_CORPUS_LANGUAGE` | `English` | Language the documents are in. Queries in other languages are translated to this when `EDGE_TRANSLATE_QUERIES=true`. |
 | `EDGE_MAX_TOKENS` | `100` | Max generation tokens for query/chat |
 | `EDGE_N_THREADS` | `4` | CPU threads for LLM |
 | `EDGE_N_CTX` | `4096` | LLM context window |

@@ -9,6 +9,15 @@ from src.store import VectorStore
 
 logger = logging.getLogger(__name__)
 
+# langdetect returns ISO codes; the translation prompt wants language names.
+_LANG_NAMES = {
+    "en": "English", "vi": "Vietnamese", "es": "Spanish", "no": "Norwegian",
+    "fr": "French", "de": "German", "pt": "Portuguese", "it": "Italian",
+    "nl": "Dutch", "sw": "Swahili", "id": "Indonesian", "tl": "Tagalog",
+    "ar": "Arabic", "hi": "Hindi", "th": "Thai", "ru": "Russian",
+    "ja": "Japanese", "ko": "Korean", "zh-cn": "Chinese", "zh-tw": "Chinese",
+}
+
 
 @dataclass
 class QueryResult:
@@ -27,12 +36,39 @@ def query_brain(
     retrieve_k: int = 20,
     score_threshold: float = 0.3,
     max_tokens: int = 512,
+    translate_queries: bool = False,
+    corpus_language: str = "English",
 ) -> QueryResult:
-    """Embed question, retrieve candidates, rerank, generate answer."""
+    """Embed question, retrieve candidates, rerank, generate answer.
+
+    The detected language drives the response's `language` field and, when
+    `translate_queries` is on, whether the query is translated into
+    `corpus_language` for retrieval (see Settings.translate_queries).
+    """
     logger.info("Query received: question_length=%d", len(question))
     language = detect_language(question)
 
-    query_vector = embedder.embed([question])[0]
+    # Cross-lingual: retrieve in the corpus language, but answer from the user's
+    # original question (so the reply stays in their language). Only translate
+    # when we can name the detected language and it differs from the corpus's.
+    retrieval_question = question
+    if translate_queries:
+        detected_name = _LANG_NAMES.get(language, "")
+        if detected_name and detected_name.lower() != corpus_language.lower():
+            translated = generator.translate(
+                text=question,
+                source_lang=detected_name,
+                target_lang=corpus_language,
+                max_tokens=min(max(len(question.split()) * 4, 16), 128),
+            ).strip()
+            if translated:
+                retrieval_question = translated
+                logger.info(
+                    "Translated query for retrieval (%s->%s): %r -> %r",
+                    detected_name, corpus_language, question, retrieval_question,
+                )
+
+    query_vector = embedder.embed([retrieval_question])[0]
 
     # Retrieve more candidates with a loose threshold
     results = store.query(
@@ -49,9 +85,9 @@ def query_brain(
             language=language,
         )
 
-    # Rerank to pick the best chunks
+    # Rerank to pick the best chunks (in the corpus language, like the embedding)
     if reranker:
-        results = reranker.rerank(query=question, chunks=results, top_k=top_k)
+        results = reranker.rerank(query=retrieval_question, chunks=results, top_k=top_k)
     else:
         results = results[:top_k]
 
