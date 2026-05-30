@@ -1,0 +1,40 @@
+app = 'voxedge'
+primary_region = 'arn'
+
+[build]
+
+[env]
+  EDGE_QDRANT_DIR = '/persist/qdrant'
+  # Reranker choice matters for non-English corpora:
+  #   - 'Xenova/ms-marco-MiniLM-L-6-v2'  = English-only. On non-English text it
+  #     flatlines (scored every chunk ~-10, couldn't tell them apart). Smaller/faster.
+  #   - 'jinaai/jina-reranker-v2-base-multilingual' = multilingual. Actually ranks
+  #     non-English chunks. ~600MB (downloads to EDGE_CACHE_DIR on first boot).
+  # This corpus is Norwegian, so we use the multilingual one. Verified live 2026-05-30.
+  EDGE_RERANKER_MODEL = 'jinaai/jina-reranker-v2-base-multilingual'
+  EDGE_CACHE_DIR = '/persist/model_cache'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'suspend'
+  auto_start_machines = true
+  min_machines_running = 1
+
+[mounts]
+  source = 'voxedge_data'
+  destination = '/persist'
+
+[[vm]]
+  memory = '8192'
+  cpu_kind = 'performance'
+  cpus = 2
+
+[checks]
+  [checks.health]
+    type = 'http'
+    port = 8080
+    path = '/health'
+    interval = '30s'
+    timeout = '10s'
+    grace_period = '900s'

@@ -38,13 +38,12 @@ The system runs in two modes:
 
 ### Reranker options
 
-The reranker is a precision filter that picks the best chunks from a larger set of candidates. Two models are available:
+The reranker is a precision filter that picks the best chunks from a larger candidate set. Two models, selected via `EDGE_RERANKER_MODEL`:
 
-**English reranker** (80 MB, default) -- `Xenova/ms-marco-MiniLM-L-6-v2`. Fast and lightweight. Works well when your documents are in English. This is the default because it keeps the footprint small and handles the most common use case.
+- **`jinaai/jina-reranker-v2-base-multilingual`** (1.1 GB, **default**) — ranks non-English and mixed-language corpora correctly.
+- **`Xenova/ms-marco-MiniLM-L-6-v2`** (80 MB) — English-only and much smaller. Use it when your corpus is English to shrink the footprint. On non-English text it flatlines — scoring every chunk near-equal, so it can't tell good chunks from bad.
 
-**Multilingual reranker** (1.1 GB) -- `jinaai/jina-reranker-v2-base-multilingual`. Switch to this when your documents are in non-English languages. The English reranker can pick the wrong chunk when multiple similar chunks compete in a non-English document. Set `EDGE_RERANKER_MODEL=jinaai/jina-reranker-v2-base-multilingual`.
-
-The embedding model and the LLM are multilingual regardless of which reranker you choose. The reranker is the only component where language matters for the choice.
+The embedding model and the LLM are multilingual regardless. The reranker is the only component where corpus language drives the choice.
 
 ### What makes it different
 
@@ -59,7 +58,7 @@ The embedding model and the LLM are multilingual regardless of which reranker yo
 
 A **profile** bundles one model's prompt templates, generation parameters, and runtime placement (CPU, Metal, or CUDA) under one name. Switch profiles by setting `EDGE_MODEL_PROFILE` — one env var picks which model runs and where.
 
-Four profiles are included:
+Five profiles are included:
 
 | Profile | Model | Hardware | Languages | License | Image |
 |---|---|---|---|---|---|
@@ -67,6 +66,7 @@ Four profiles are included:
 | `aya` | Tiny Aya Global, Q4 GGUF (2.1 GB) | CPU | 70+ | CC-BY-NC (non-commercial) | `Dockerfile.aya` (Pi) |
 | `gemma-metal` | Gemma 4 E2B, Q4 GGUF | Apple GPU (Metal) | 35+ | Apache 2.0 | dev only, no Docker image |
 | `gemma-cuda` | Gemma 4 E2B, Q4 GGUF | NVIDIA GPU (CUDA) | 35+ | Apache 2.0 | `Dockerfile.cuda` |
+| `aya-cuda` | Tiny Aya Global, Q4 GGUF (2.1 GB) | NVIDIA GPU (CUDA) | 70+ | CC-BY-NC | `Dockerfile.cuda.aya` |
 
 **All four profiles share the same GGUF model weights for their respective models — only the runtime placement differs.** A Pi deployment and a DGX Spark deployment run the same Gemma 4 E2B file; the Pi offloads nothing, the Spark offloads every layer.
 
@@ -74,9 +74,11 @@ Four profiles are included:
 
 **`gemma-metal`** — Apple Silicon dev dress rehearsal. Offloads every layer of Gemma 4 to the Apple GPU via llama.cpp's Metal backend. The default `llama-cpp-python` wheel on Apple Silicon already bundles Metal support; if yours doesn't, reinstall with `CMAKE_ARGS="-DGGML_METAL=on" pip install --force-reinstall --no-cache-dir llama-cpp-python`. No Docker image — this is a local-venv path for developers.
 
-**`gemma-cuda`** — production GPU path. The LLM, embedder, *and* reranker all run on the NVIDIA GPU. Built for NVIDIA DGX Spark but runs on any CUDA GPU with ≥ 6 GB VRAM (RTX 3090/4090, A100, T4‑16GB, etc.). Uses the Jina multilingual reranker by default (VRAM is plentiful) and bumps `EDGE_MAX_TOKENS` to 800 so answers have room to breathe. See [`docs/gpu-profile.md`](docs/gpu-profile.md) for design and test plan, and [`docs/gpu-profile-lessons.md`](docs/gpu-profile-lessons.md) for runtime gotchas (cuDNN, `onnxruntime-gpu`, Docker-in-Docker on RunPod).
+**`gemma-cuda`** — production GPU path. The LLM, embedder, *and* reranker all run on the NVIDIA GPU. Built for NVIDIA DGX Spark but runs on any CUDA GPU with ≥ 6 GB VRAM (RTX 3090/4090, A100, T4‑16GB, etc.). Uses the Jina multilingual reranker by default (VRAM is plentiful) and bumps `EDGE_MAX_TOKENS` to 800 so answers have room to breathe. See [`docs/gpu-profile-lessons.md`](docs/gpu-profile-lessons.md) for runtime gotchas (cuDNN, `onnxruntime-gpu`).
 
-Separate Dockerfiles are provided for each image in `deploy/docker/`. The root Dockerfile defaults to Aya for backward compatibility.
+**`aya-cuda`** — same GPU placement as `gemma-cuda` but runs the smaller Tiny Aya model (70+ languages, CC-BY-NC). Built via `Dockerfile.cuda.aya`.
+
+Separate Dockerfiles for each image live in `deploy/docker/`. The root Dockerfile defaults to Aya for backward compatibility.
 
 ### Stack
 
@@ -350,7 +352,7 @@ curl -X POST http://localhost:8080/ingest \
 
 **Supported formats:**
 - `.txt`, `.md` — read directly, best quality
-- `.pdf` — parsed by LiteParse with spatial layout reconstruction and built-in OCR (Tesseract). Text-based PDFs work well. Scanned PDFs depend on image quality.
+- `.pdf` — parsed by LiteParse with spatial layout reconstruction. VoxEdge runs LiteParse with `--no-ocr`, so **text-layer PDFs only** (digital exports from Word/LaTeX/etc.). Scanned or image-only PDFs yield little to no text. To OCR scans, drop `--no-ocr` in `src/parser.py` and install Tesseract language data in the image.
 - `.docx`, `.doc`, `.pptx`, `.xlsx` — LiteParse converts to PDF via LibreOffice (included in the Docker image), then parses. For local development, install LibreOffice separately.
 
 Re-ingesting the same file overwrites existing chunks.
@@ -487,20 +489,14 @@ All settings are configurable via environment variables with the `EDGE_` prefix:
 | `EDGE_CORPUS_DIR` | `/data/corpus` | Baked-in documents directory |
 | `EDGE_QDRANT_DIR` | `/data/qdrant` | Vector storage path |
 
-### Deployment modes
-
-**Full mode** (`EDGE_MODE=full`, default) — loads all components. All endpoints available.
-
-**Chat mode** (`EDGE_MODE=chat`) — loads only the LLM. Only `/chat`, `/translate`, `/info`, `/health` available. Faster startup, less RAM.
-
 ### Choosing a reranker
+
+See [Reranker options](#reranker-options) above for the why. Quick reference:
 
 | Model | Size | Speed | Best for |
 |---|---|---|---|
+| `jinaai/jina-reranker-v2-base-multilingual` (default) | 1.1 GB | ~50ms/chunk | Non-English or mixed corpus |
 | `Xenova/ms-marco-MiniLM-L-6-v2` | 80 MB | ~5ms/chunk | English-only corpus |
-| `jinaai/jina-reranker-v2-base-multilingual` | 1.1 GB | ~50ms/chunk | Non-English or mixed corpus |
-
-The English reranker struggles with non-English content — it may score the wrong chunk higher when multiple similar chunks compete in a non-English document.
 
 ### Tuning guidelines
 
